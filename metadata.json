@@ -1,0 +1,6 @@
+{
+  "name": "Mates 3r ESO - Entrenador Adaptatiu",
+  "description": "Applet adaptatiu de pràctica autònoma de càlcul bàsic amb enters, potències i fraccions per a alumnes de 3r d'ESO a Catalunya, amb resolució pas a pas i detecció d'errors freqüents.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

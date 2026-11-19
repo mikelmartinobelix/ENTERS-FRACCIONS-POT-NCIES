@@ -1,0 +1,116 @@
+{
+  "entities": {
+    "StudentProfile": {
+      "title": "StudentProfile",
+      "description": "Perfil i estadístiques globals de pràctica d'un alumne",
+      "type": "object",
+      "properties": {
+        "studentId": {
+          "type": "string",
+          "description": "Identificador únic de l'alumne"
+        },
+        "name": {
+          "type": "string",
+          "description": "Nom i cognom de l'alumne",
+          "maxLength": 100
+        },
+        "group": {
+          "type": "string",
+          "description": "Classe o grup de l'alumne (ex: 3r ESO A)",
+          "maxLength": 50
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Data de creació en format ISO"
+        },
+        "lastActiveAt": {
+          "type": "string",
+          "description": "Darrera activitat de pràctica en format ISO"
+        },
+        "totalExercises": {
+          "type": "number",
+          "description": "Total d'exercicis intentats"
+        },
+        "correctExercises": {
+          "type": "number",
+          "description": "Total d'exercicis correctes al primer intent"
+        },
+        "currentStreak": {
+          "type": "number",
+          "description": "Ràtxa actual d'encerts consecutius"
+        },
+        "bestStreak": {
+          "type": "number",
+          "description": "Millor ràtxa d'encerts consecutius"
+        }
+      },
+      "required": ["studentId", "name", "group", "totalExercises", "correctExercises"]
+    },
+    "ExerciseLog": {
+      "title": "ExerciseLog",
+      "description": "Registre detallat de cada exercici resolt per un alumne",
+      "type": "object",
+      "properties": {
+        "logId": {
+          "type": "string",
+          "description": "ID del registre"
+        },
+        "studentId": {
+          "type": "string",
+          "description": "ID de l'alumne associat"
+        },
+        "studentName": {
+          "type": "string",
+          "description": "Nom de l'alumne"
+        },
+        "group": {
+          "type": "string",
+          "description": "Grup de l'alumne"
+        },
+        "category": {
+          "type": "string",
+          "description": "Bloc temàtic (enters, potencies, fraccions)"
+        },
+        "difficulty": {
+          "type": "number",
+          "description": "Nivell de dificultat (1 a 4)"
+        },
+        "expression": {
+          "type": "string",
+          "description": "Expressió matemàtica de l'exercici"
+        },
+        "userAnswer": {
+          "type": "string",
+          "description": "Resposta introduïda per l'alumne"
+        },
+        "correctAnswer": {
+          "type": "string",
+          "description": "Solució correcta"
+        },
+        "isCorrect": {
+          "type": "boolean",
+          "description": "Si ha estat correcta"
+        },
+        "mistakeTitle": {
+          "type": "string",
+          "description": "Títol del diagnòstic de l'error si ha fallat"
+        },
+        "timestamp": {
+          "type": "number",
+          "description": "Timestamp en mil·lisegons"
+        }
+      },
+      "required": ["logId", "studentId", "studentName", "group", "category", "expression", "isCorrect"]
+    }
+  },
+  "firestore": {
+    "/students/{studentId}": {
+      "schema": "StudentProfile",
+      "description": "Col·lecció de perfils d'alumnes i estadístiques"
+    },
+    "/exercise_logs/{logId}": {
+      "schema": "ExerciseLog",
+      "description": "Històric de preguntes i intents dels alumnes per al professor"
+    }
+  }
+}

@@ -1,0 +1,13 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Regles per a l'app educativa de Mates 3r d'ESO
+    match /students/{studentId} {
+      allow read, write: if true;
+    }
+
+    match /exercise_logs/{logId} {
+      allow read, write: if true;
+    }
+  }
+}
