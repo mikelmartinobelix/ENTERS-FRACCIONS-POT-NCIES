@@ -9,7 +9,8 @@ import {
   ExerciseLog,
   subscribeToAllStudents,
   subscribeToRecentLogs,
-  getFirestoreStatus
+  getFirestoreStatus,
+  testConnection
 } from '../services/firebase';
 import {
   Users,
@@ -63,6 +64,9 @@ export const TeacherDashboardModal: React.FC<TeacherDashboardModalProps> = ({
     if (isOpen) {
       setActiveTab(initialTab);
       setDbStatus(getFirestoreStatus());
+      testConnection().then(() => {
+        setDbStatus(getFirestoreStatus());
+      });
     }
   }, [isOpen, initialTab]);
 
@@ -643,6 +647,12 @@ export const TeacherDashboardModal: React.FC<TeacherDashboardModalProps> = ({
                         <span>{copiedLink ? 'Copiat!' : 'Copiar Enllaç'}</span>
                       </button>
                     </div>
+
+                    {window.location.href.includes('ais-dev-') && (
+                      <div className="mt-2 bg-white/15 border border-white/25 rounded-xl p-3 text-[11px] text-indigo-50 leading-relaxed">
+                        <strong>Pas previ per publicar l'enllaç:</strong> Fes clic al botó <strong>Share / Deploy</strong> a la barra superior dreta de Google AI Studio perquè l'enllaç públic (<code className="font-mono">ais-pre-...</code>) quedi actiu per als alumnes.
+                      </div>
+                    )}
                   </div>
 
                   {/* QR Code per a la Pissarra Digital */}

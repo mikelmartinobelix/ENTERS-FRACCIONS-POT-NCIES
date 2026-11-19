@@ -9,6 +9,7 @@ import {
   doc,
   setDoc,
   getDoc,
+  getDocFromServer,
   collection,
   query,
   orderBy,
@@ -27,7 +28,8 @@ let firestoreErrorMessage = '';
 
 try {
   appInstance = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-  firestoreDb = getFirestore(appInstance);
+  const dbId = (firebaseConfig as { firestoreDatabaseId?: string }).firestoreDatabaseId || '(default)';
+  firestoreDb = getFirestore(appInstance, dbId);
   isFirestoreAvailable = true;
 } catch (e: any) {
   console.warn('[Firebase Init Warning]:', e?.message || e);
@@ -151,24 +153,29 @@ function withTimeout<T>(promise: Promise<T>, ms: number = 2000): Promise<T> {
   });
 }
 
-// Test connection safely without blocking
+// Test connection safely without blocking (uses getDocFromServer to verify live Firestore connectivity)
 export async function testConnection(): Promise<boolean> {
   if (!db) {
     isFirestoreAvailable = false;
     return false;
   }
   try {
-    const testDoc = doc(db, 'students', 'test-connection');
-    await withTimeout(getDoc(testDoc), 2500);
+    const testDoc = doc(db, 'test', 'connection');
+    await withTimeout(getDocFromServer(testDoc), 2500);
     isFirestoreAvailable = true;
     firestoreErrorMessage = '';
     return true;
   } catch (error: any) {
-    console.warn('[Firestore Connection Check]:', error?.message || error);
-    isFirestoreAvailable = false;
-    if (error?.message) {
-      firestoreErrorMessage = error.message;
+    const msg = error?.message || String(error);
+    // Permission denied still means the server responded (Firestore database exists!)
+    if (msg.includes('Missing or insufficient permissions') || msg.includes('permission-denied')) {
+      isFirestoreAvailable = true;
+      firestoreErrorMessage = '';
+      return true;
     }
+    console.warn('[Firestore Connection Check]:', msg);
+    isFirestoreAvailable = false;
+    firestoreErrorMessage = msg;
     return false;
   }
 }
