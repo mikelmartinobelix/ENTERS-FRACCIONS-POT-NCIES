@@ -61,6 +61,27 @@ export function formatSigned(n: number): string {
   return n < 0 ? `(${n})` : `${n}`;
 }
 
+const SUP_DIGITS: Record<string, string> = {
+  '0': '⁰',
+  '1': '¹',
+  '2': '²',
+  '3': '³',
+  '4': '⁴',
+  '5': '⁵',
+  '6': '⁶',
+  '7': '⁷',
+  '8': '⁸',
+  '9': '⁹',
+  '-': '⁻'
+};
+
+export function toSuperscript(val: number | string): string {
+  return String(val)
+    .split('')
+    .map((ch) => SUP_DIGITS[ch] ?? ch)
+    .join('');
+}
+
 // -----------------------------------------------------------------------------
 // EXERCISE GENERATORS: NOMBRES ENTERS
 // -----------------------------------------------------------------------------
@@ -652,7 +673,7 @@ function generatePotenciesLevel1(): MathExercise {
   const isZero = Math.random() > 0.5;
   const exp = isZero ? 0 : 1;
   const result = isZero ? 1 : base;
-  const exprStr = `(${base})^${exp}`;
+  const exprStr = base < 0 ? `(${base})^${exp}` : `${base}^${exp}`;
 
   return {
     id,
@@ -861,25 +882,27 @@ function generatePotenciesLevel2(): MathExercise {
 function generatePotenciesLevel3(): MathExercise {
   // Exponent negatiu a 3r d'ESO: a^(-n) = 1 / a^n or (a/b)^(-n) = (b/a)^n
   const id = `pot-3-${Date.now()}-${randomInt(100, 999)}`;
-  const isFraction = Math.random() > 0.4;
+  const isFraction = Math.random() > 0.45;
 
   if (isFraction) {
     const num = randomInt(2, 4);
-    const den = num === 2 ? 3 : (num === 3 ? 4 : 5);
-    const exp = 2; // (num/den)^(-2) = (den/num)^2 = den^2 / num^2
-    const ansNum = den * den;
-    const ansDen = num * num;
+    const den = num === 2 ? 3 : num === 3 ? 4 : 5;
+    const exp = randomInt(2, 3); // (num/den)^(-2) or (-3)
+    const expSup = toSuperscript(-exp);
+    const posExpSup = toSuperscript(exp);
+    const ansNum = Math.pow(den, exp);
+    const ansDen = Math.pow(num, exp);
 
     const steps: ResolutionStep[] = [
       {
         title: "Pas 1: Aplicar la definició d'exponent negatiu a una fracció",
-        explanation: `Un exponent negatiu INVERTEIX la fracció: (a/b)⁻ⁿ = (b/a)ⁿ. Invertim numerador i denominador: (${num}/${den})⁻² = (${den}/${num})².`,
-        expression: `(${num}/${den})⁻² = (${den}/${num})²`,
+        explanation: `Un exponent negatiu INVERTEIX la fracció: (a/b)⁻ⁿ = (b/a)ⁿ. Invertim numerador i denominador: (${num}/${den})${expSup} = (${den}/${num})${posExpSup}.`,
+        expression: `(${num}/${den})^(-${exp}) = (${den}/${num})^${exp}`,
         ruleTag: "Inversió per exponent negatiu"
       },
       {
-        title: "Pas 2: Elevar numerador i denominador al quadrat",
-        explanation: `${den}² = ${ansNum} i ${num}² = ${ansDen}. El resultat en fracció irreductible és ${ansNum}/${ansDen}.`,
+        title: `Pas 2: Elevar numerador i denominador a ${exp}`,
+        explanation: `${den}${posExpSup} = ${ansNum} i ${num}${posExpSup} = ${ansDen}. El resultat en fracció irreductible és ${ansNum}/${ansDen}.`,
         expression: `= ${ansNum}/${ansDen}`,
         ruleTag: "Càlcul de la fracció"
       }
@@ -892,14 +915,14 @@ function generatePotenciesLevel3(): MathExercise {
       difficulty: 3,
       difficultyLabel: 'Nivell 3: 3r d’ESO Estàndard',
       questionPrompt: 'Calcula el valor fraccionari simplificat aplicant la propietat de l’exponent negatiu:',
-      expressionDisplay: `(${num}/${den})⁻²`,
+      expressionDisplay: `(${num}/${den})^(-${exp})`,
       displayType: 'fraction_expr',
       correctAnswer: { kind: 'fraction', num: ansNum, den: ansDen },
       answerDisplay: `${ansNum}/${ansDen}`,
       steps,
       hints: [
         "Recorda la regla d'or: un exponent negatiu NO fa el nombre negatiu, sinó que gira la fracció!",
-        `Inverteix la fracció i després eleva al quadrat: (${den}/${num})².`
+        `Inverteix la fracció i després eleva a ${exp}: (${den}/${num})${posExpSup}.`
       ],
       diagnoseMistake: (u) => {
         if (u.numVal !== undefined && u.denVal !== undefined) {
@@ -911,10 +934,10 @@ function generatePotenciesLevel3(): MathExercise {
               detectedConcept: "Significat d'exponent negatiu"
             };
           }
-          if (u.numVal === num * num && u.denVal === den * den) {
+          if (u.numVal === Math.pow(num, exp) && u.denVal === Math.pow(den, exp)) {
             return {
               mistakeTitle: "Has oblidat invertir la fracció!",
-              explanation: `Has calculat (${num}/${den})² = ${num*num}/${den*den}, però l'exponent era NEGATIU (-2)! Calia capgirar la fracció primer: (${den}/${num})².`,
+              explanation: `Has calculat (${num}/${den})${posExpSup} = ${Math.pow(num, exp)}/${Math.pow(den, exp)}, però l'exponent era NEGATIU (-${exp})! Calia capgirar la fracció primer: (${den}/${num})${posExpSup}.`,
               tip: "Quan vegis un exponent amb signe menys, gira la fracció cap per avall!",
               detectedConcept: "Invertir base fraccionària"
             };
@@ -925,20 +948,22 @@ function generatePotenciesLevel3(): MathExercise {
     };
   } else {
     // a^(-n) = 1 / a^n
-    const base = randomInt(2, 5);
-    const exp = randomInt(2, 3);
+    const base = randomInt(2, 6);
+    const exp = base <= 4 ? randomInt(2, 3) : 2;
+    const expSup = toSuperscript(-exp);
+    const posExpSup = toSuperscript(exp);
     const calculated = Math.pow(base, exp);
 
     const steps: ResolutionStep[] = [
       {
         title: "Pas 1: Transformar l'exponent negatiu en fracció",
-        explanation: `La propietat diu: a⁻ⁿ = 1 / aⁿ. Per tant: ${base}⁻${exp} = 1 / ${base}^${exp}.`,
-        expression: `${base}⁻${exp} = 1 / ${base}^${exp}`,
+        explanation: `La propietat diu: a⁻ⁿ = 1 / aⁿ. Per tant: ${base}${expSup} = 1 / ${base}${posExpSup}.`,
+        expression: `${base}^(-${exp}) = 1 / ${base}^${exp}`,
         ruleTag: "a⁻ⁿ = 1 / aⁿ"
       },
       {
         title: "Pas 2: Calcular la potència del denominador",
-        explanation: `${base}^${exp} = ${calculated}. Així obtenim la fracció irreductible 1/${calculated}.`,
+        explanation: `${base}${posExpSup} = ${calculated}. Així obtenim la fracció irreductible 1/${calculated}.`,
         expression: `= 1/${calculated}`
       }
     ];
@@ -950,23 +975,39 @@ function generatePotenciesLevel3(): MathExercise {
       difficulty: 3,
       difficultyLabel: 'Nivell 3: 3r d’ESO Estàndard',
       questionPrompt: 'Expressa com una fracció simplificada calculant el valor:',
-      expressionDisplay: `${base}⁻${exp}`,
+      expressionDisplay: `${base}^(-${exp})`,
       displayType: 'fraction_expr',
       correctAnswer: { kind: 'fraction', num: 1, den: calculated },
       answerDisplay: `1/${calculated}`,
       steps,
       hints: [
         "Un exponent negatiu converteix el nombre en una fracció amb 1 al numerador: a⁻ⁿ = 1 / aⁿ.",
-        `Calcula quant val ${base}^${exp} per posar-lo al denominador.`
+        `Calcula quant val ${base}${posExpSup} per posar-lo al denominador.`
       ],
       diagnoseMistake: (u) => {
-        if (u.numberVal !== undefined) {
-          if (u.numberVal === -calculated) {
+        if (u.numVal !== undefined && u.denVal !== undefined) {
+          if (u.numVal === -1 && u.denVal === calculated) {
             return {
-              mistakeTitle: "L'exponent negatiu no posa un signe menys!",
-              explanation: `Has contestat -${calculated}. Però ${base}⁻${exp} = 1 / ${base}^${exp} = 1/${calculated}.`,
+              mistakeTitle: "L'exponent negatiu NO posa un signe menys davant!",
+              explanation: `Has posat -1/${calculated}, però l'exponent negatiu només inverteix la base: ${base}${expSup} = +1/${calculated}.`,
+              tip: "L'exponent negatiu indica INVERS multiplicatiu, mai canvi de signe.",
+              detectedConcept: "Inversió vs signe oposat"
+            };
+          }
+          if (u.numVal === -calculated || (u.numVal === -1 && u.denVal === 1)) {
+            return {
+              mistakeTitle: "L'exponent negatiu no fa el nombre negatiu!",
+              explanation: `${base}${expSup} = 1 / ${base}${posExpSup} = 1/${calculated}.`,
               tip: "L'exponent negatiu indica INVERS multiplicatiu, no oposat.",
               detectedConcept: "Inversió vs signe oposat"
+            };
+          }
+          if (u.numVal === calculated && u.denVal === 1) {
+            return {
+              mistakeTitle: "Has oblidat posar la potència al denominador!",
+              explanation: `Has calculat ${base}${posExpSup} = ${calculated}, però com que l'exponent era -${exp}, queda 1/${calculated}.`,
+              tip: "a⁻ⁿ sempre baixa al denominador: 1 / aⁿ.",
+              detectedConcept: "Exponent negatiu al denominador"
             };
           }
         }
@@ -977,74 +1018,380 @@ function generatePotenciesLevel3(): MathExercise {
 }
 
 function generatePotenciesLevel4(): MathExercise {
-  // Level 4 (Exam Challenge): Simplification of combined power expressions with same prime base
-  // e.g. [ (2^3 · 2^4)^2 ] : 2^11 = 2^?
+  // Level 4 (Exam Challenge): Varied combined power structures with same base
   const id = `pot-4-${Date.now()}-${randomInt(100, 999)}`;
-  const base = randomInt(2, 5);
-  const e1 = randomInt(2, 4);
-  const e2 = randomInt(2, 3);
-  const outer = 2;
-  const innerSum = e1 + e2;
-  const multiplied = innerSum * outer;
-  const subtract = randomInt(1, multiplied - 1);
-  const finalExp = multiplied - subtract;
+  const base = randomInt(2, 7);
+  const variant = randomInt(1, 6);
 
-  const exprStr = `[ (${base}^${e1} · ${base}^${e2})^${outer} ] : ${base}^${subtract} = ${base}^?`;
+  if (variant === 1) {
+    // Variant 1: [ (b^e1 · b^e2)^outer ] : b^sub = b^?
+    const e1 = randomInt(2, 4);
+    const e2 = randomInt(2, 3);
+    const outer = randomInt(2, 3);
+    const innerSum = e1 + e2;
+    const multiplied = innerSum * outer;
+    const subtract = randomInt(2, multiplied - 1);
+    const finalExp = multiplied - subtract;
 
-  const steps: ResolutionStep[] = [
-    {
-      title: "Pas 1: Sumar exponents en el producte interior",
-      explanation: `Dins del parèntesi tenim ${base}^${e1} · ${base}^${e2}. Se sumen exponents: ${e1} + ${e2} = ${innerSum}.`,
-      expression: `[ (${base}^${innerSum})^${outer} ] : ${base}^${subtract}`,
-      ruleTag: "Producte mateixa base"
-    },
-    {
-      title: "Pas 2: Potència d'una potència",
-      explanation: `Apliquem la potència d'una potència: es multipliquen exponents ${innerSum} · ${outer} = ${multiplied}.`,
-      expression: `${base}^${multiplied} : ${base}^${subtract}`,
-      ruleTag: "Multiplicar exponents"
-    },
-    {
-      title: "Pas 3: Divisió de potències de la mateixa base",
-      explanation: `Resta d'exponents en la divisió: ${multiplied} - ${subtract} = ${finalExp}.`,
-      expression: `= ${base}^${finalExp}`,
-      ruleTag: "Resta d'exponents"
-    }
-  ];
+    const exprStr = `[ (${base}^${e1} · ${base}^${e2})^${outer} ] : ${base}^${subtract} = ${base}^?`;
+
+    return {
+      id,
+      category: 'potencies',
+      topicName: 'Simplificació combinada de potències',
+      difficulty: 4,
+      difficultyLabel: 'Nivell 4: Repte d’Examen',
+      questionPrompt: `Troba l'exponent final de la base ${base} en simplificar tota l'expressió:`,
+      expressionDisplay: exprStr,
+      displayType: 'power_expr',
+      correctAnswer: { kind: 'power', base, exp: finalExp },
+      answerDisplay: `${base}^${finalExp} (exponent: ${finalExp})`,
+      steps: [
+        {
+          title: "Pas 1: Sumar exponents en el producte interior",
+          explanation: `Dins del parèntesi tenim ${base}${toSuperscript(e1)} · ${base}${toSuperscript(e2)}. Se sumen exponents: ${e1} + ${e2} = ${innerSum}.`,
+          expression: `[ (${base}^${innerSum})^${outer} ] : ${base}^${subtract}`,
+          ruleTag: "Producte mateixa base"
+        },
+        {
+          title: "Pas 2: Potència d'una potència",
+          explanation: `Multipliquem els exponents: ${innerSum} · ${outer} = ${multiplied}.`,
+          expression: `${base}^${multiplied} : ${base}^${subtract}`,
+          ruleTag: "Multiplicar exponents"
+        },
+        {
+          title: "Pas 3: Divisió de potències de la mateixa base",
+          explanation: `Restem els exponents en la divisió: ${multiplied} - ${subtract} = ${finalExp}.`,
+          expression: `= ${base}^${finalExp}`,
+          ruleTag: "Resta d'exponents"
+        }
+      ],
+      hints: [
+        `Fes primer el parèntesi interior (${base}${toSuperscript(e1)} · ${base}${toSuperscript(e2)}) sumant exponents.`,
+        `Després multiplica per l'exponent exterior ${outer}.`,
+        `Finalment resta l'exponent del divisor (${subtract}).`
+      ],
+      diagnoseMistake: (u) => {
+        const val = u.expVal ?? u.numberVal;
+        if (val === undefined) return null;
+        if (val === -finalExp) {
+          return {
+            mistakeTitle: "Signe de l'exponent erroni!",
+            explanation: `L'exponent ha de ser positiu (${finalExp}).`,
+            tip: "Revisa la resta d'exponents de l'últim pas.",
+            detectedConcept: "Operacions amb exponents"
+          };
+        }
+        return {
+          mistakeTitle: "Revisa l'ordre de propietats",
+          explanation: `Seqüència: 1r Sumar dins del parèntesi (${e1}+${e2}=${innerSum}) → 2n Multiplicar per ${outer} (${multiplied}) → 3r Restar ${subtract}.`,
+          tip: `(${base}${toSuperscript(innerSum)})${toSuperscript(outer)} = ${base}${toSuperscript(multiplied)}, i després restem ${subtract}.`,
+          detectedConcept: "Combinació de propietats de potències"
+        };
+      }
+    };
+  }
+
+  if (variant === 2) {
+    // Variant 2: b^e1 · (b^e2)^outer : b^sub = b^? (hierarchy without brackets)
+    const e1 = randomInt(3, 6);
+    const e2 = randomInt(2, 4);
+    const outer = randomInt(2, 3);
+    const powVal = e2 * outer;
+    const sumVal = e1 + powVal;
+    const sub = randomInt(2, sumVal - 1);
+    const finalExp = sumVal - sub;
+
+    const exprStr = `${base}^${e1} · (${base}^${e2})^${outer} : ${base}^${sub} = ${base}^?`;
+
+    return {
+      id,
+      category: 'potencies',
+      topicName: 'Jerarquia en potències combinades',
+      difficulty: 4,
+      difficultyLabel: 'Nivell 4: Repte d’Examen',
+      questionPrompt: `Simplifica aplicant la jerarquia i indica l'exponent final per a la base ${base}:`,
+      expressionDisplay: exprStr,
+      displayType: 'power_expr',
+      correctAnswer: { kind: 'power', base, exp: finalExp },
+      answerDisplay: `${base}^${finalExp} (exponent: ${finalExp})`,
+      steps: [
+        {
+          title: "Pas 1: Resoldre primer la potència d'una potència",
+          explanation: `Tenim (${base}${toSuperscript(e2)})${toSuperscript(outer)}. Multipliquem els exponents: ${e2} · ${outer} = ${powVal}.`,
+          expression: `${base}^${e1} · ${base}^${powVal} : ${base}^${sub}`,
+          ruleTag: "Potència d'una potència"
+        },
+        {
+          title: "Pas 2: Operar productes i divisions d'esquerra a dreta",
+          explanation: `Primer sumem en el producte: ${e1} + ${powVal} = ${sumVal}. Després restem en la divisió: ${sumVal} - ${sub} = ${finalExp}.`,
+          expression: `${base}^(${sumVal} - ${sub}) = ${base}^${finalExp}`,
+          ruleTag: "Producte i quocient"
+        }
+      ],
+      hints: [
+        `Comença per la potència de potència (${base}${toSuperscript(e2)})${toSuperscript(outer)}: multiplica ${e2} · ${outer}.`,
+        `Després suma l'exponent ${e1} i resta l'exponent ${sub}.`
+      ],
+      diagnoseMistake: (u) => {
+        const val = u.expVal ?? u.numberVal;
+        if (val === undefined) return null;
+        if (val === (e1 + e2) * outer - sub) {
+          return {
+            mistakeTitle: "Compte amb l'abast del parèntesi!",
+            explanation: `L'exponent ${outer} només afecta a (${base}${toSuperscript(e2)}), NO a ${base}${toSuperscript(e1)}!`,
+            tip: `Calcula primer (${base}${toSuperscript(e2)})${toSuperscript(outer)} = ${base}${toSuperscript(powVal)} i després fes el producte.`,
+            detectedConcept: "Jerarquia de potències"
+          };
+        }
+        return {
+          mistakeTitle: "Revisa el càlcul d'exponents",
+          explanation: `Recorda: (${base}${toSuperscript(e2)})${toSuperscript(outer)} = ${base}${toSuperscript(powVal)}. Després ${e1} + ${powVal} - ${sub} = ${finalExp}.`,
+          tip: "Multiplica exponents al parèntesi, suma quan multipliquis bases i resta quan divideixis.",
+          detectedConcept: "Jerarquia de potències"
+        };
+      }
+    };
+  }
+
+  if (variant === 3) {
+    // Variant 3: [ (b^e1 : b^e2)^outer ] · b^e3 = b^?
+    const e2 = randomInt(2, 4);
+    const diff = randomInt(2, 4);
+    const e1 = e2 + diff;
+    const outer = randomInt(2, 3);
+    const powVal = diff * outer;
+    const e3 = randomInt(2, 5);
+    const finalExp = powVal + e3;
+
+    const exprStr = `[ (${base}^${e1} : ${base}^${e2})^${outer} ] · ${base}^${e3} = ${base}^?`;
+
+    return {
+      id,
+      category: 'potencies',
+      topicName: 'Quocient, potència i producte combinats',
+      difficulty: 4,
+      difficultyLabel: 'Nivell 4: Repte d’Examen',
+      questionPrompt: `Troba l'exponent final de la base ${base} simplificant l'expressió:`,
+      expressionDisplay: exprStr,
+      displayType: 'power_expr',
+      correctAnswer: { kind: 'power', base, exp: finalExp },
+      answerDisplay: `${base}^${finalExp} (exponent: ${finalExp})`,
+      steps: [
+        {
+          title: "Pas 1: Restar exponents a la divisió interior",
+          explanation: `Dins del parèntesi tenim ${base}${toSuperscript(e1)} : ${base}${toSuperscript(e2)}. Restem exponents: ${e1} - ${e2} = ${diff}.`,
+          expression: `[ (${base}^${diff})^${outer} ] · ${base}^${e3}`,
+          ruleTag: "Quocient mateixa base"
+        },
+        {
+          title: "Pas 2: Potència d'una potència",
+          explanation: `Multipliquem els exponents: ${diff} · ${outer} = ${powVal}.`,
+          expression: `${base}^${powVal} · ${base}^${e3}`,
+          ruleTag: "Potència de potència"
+        },
+        {
+          title: "Pas 3: Producte final de potències",
+          explanation: `En multiplicar bases iguals, sumem exponents: ${powVal} + ${e3} = ${finalExp}.`,
+          expression: `= ${base}^${finalExp}`,
+          ruleTag: "Producte mateixa base"
+        }
+      ],
+      hints: [
+        `Resol primer el quocient dins del parèntesi restant ${e1} - ${e2}.`,
+        `Multiplica el resultat per ${outer} i al final suma-hi ${e3}.`
+      ],
+      diagnoseMistake: (u) => {
+        const val = u.expVal ?? u.numberVal;
+        if (val === undefined) return null;
+        return {
+          mistakeTitle: "Revisa els passos del claudàtor",
+          explanation: `1r: ${e1} - ${e2} = ${diff}. 2n: ${diff} · ${outer} = ${powVal}. 3r: ${powVal} + ${e3} = ${finalExp}.`,
+          tip: "Resol sempre des de dins dels parèntesis cap enfora.",
+          detectedConcept: "Operacions combinades amb potències"
+        };
+      }
+    };
+  }
+
+  if (variant === 4) {
+    // Variant 4: (b^e1 · b^e2) : (b^e3 · b^e4) = b^? (or fraction form)
+    const e3 = randomInt(2, 4);
+    const e4 = randomInt(2, 4);
+    const denSum = e3 + e4;
+    const extra = randomInt(1, 5);
+    const e1 = randomInt(3, denSum + extra - 2);
+    const e2 = denSum + extra - e1;
+    const numSum = e1 + e2;
+    const finalExp = numSum - denSum;
+
+    const useFractionBar = Math.random() > 0.45;
+    const exprStr = useFractionBar
+      ? `(${base}^${e1} · ${base}^${e2}) / (${base}^${e3} · ${base}^${e4}) = ${base}^?`
+      : `(${base}^${e1} · ${base}^${e2}) : (${base}^${e3} · ${base}^${e4}) = ${base}^?`;
+
+    return {
+      id,
+      category: 'potencies',
+      topicName: 'Quocient entre productes de potències',
+      difficulty: 4,
+      difficultyLabel: 'Nivell 4: Repte d’Examen',
+      questionPrompt: `Simplifica els dos blocs i troba l'exponent final de la base ${base}:`,
+      expressionDisplay: exprStr,
+      displayType: 'power_expr',
+      correctAnswer: { kind: 'power', base, exp: finalExp },
+      answerDisplay: `${base}^${finalExp} (exponent: ${finalExp})`,
+      steps: [
+        {
+          title: "Pas 1: Simplificar cada bloc per separat",
+          explanation: `Al primer bloc (numerador): ${e1} + ${e2} = ${numSum}. Al segon bloc (denominador): ${e3} + ${e4} = ${denSum}.`,
+          expression: useFractionBar
+            ? `${base}^${numSum} / ${base}^${denSum}`
+            : `${base}^${numSum} : ${base}^${denSum}`,
+          ruleTag: "Sumar exponents dins cada bloc"
+        },
+        {
+          title: "Pas 2: Dividir les dues potències resultants",
+          explanation: `Restem l'exponent del segon bloc al primer: ${numSum} - ${denSum} = ${finalExp}.`,
+          expression: `= ${base}^${finalExp}`,
+          ruleTag: "Quocient mateixa base"
+        }
+      ],
+      hints: [
+        `Suma primer els exponents del primer bloc (${e1} + ${e2}) i els del segon (${e3} + ${e4}).`,
+        `Després resta els dos resultats: ${numSum} - ${denSum}.`
+      ],
+      diagnoseMistake: (u) => {
+        const val = u.expVal ?? u.numberVal;
+        if (val === undefined) return null;
+        if (val === numSum - e3 + e4) {
+          return {
+            mistakeTitle: "Compte amb el parèntesi del divisor!",
+            explanation: `Tot el bloc (${base}${toSuperscript(e3)} · ${base}${toSuperscript(e4)}) està dividint! Has de sumar ${e3} + ${e4} = ${denSum} abans de restar-ho tot plegat.`,
+            tip: "No facis - e3 + e4; agrupa primer el denominador/divisor.",
+            detectedConcept: "Parèntesis en divisors"
+          };
+        }
+        return {
+          mistakeTitle: "Revisa la simplificació dels blocs",
+          explanation: `El primer grup dóna ${base}${toSuperscript(numSum)} i el segon ${base}${toSuperscript(denSum)}. En dividir-los, ${numSum} - ${denSum} = ${finalExp}.`,
+          tip: "Suma exponents a dalt, suma exponents a baix, i finalment resta.",
+          detectedConcept: "Quocient de productes"
+        };
+      }
+    };
+  }
+
+  if (variant === 5) {
+    // Variant 5: (b^e1)^k1 · (b^e2)^k2 : b^sub = b^?
+    const e1 = randomInt(2, 3);
+    const k1 = randomInt(2, 3);
+    const e2 = randomInt(2, 3);
+    const k2 = 2;
+    const p1 = e1 * k1;
+    const p2 = e2 * k2;
+    const sumVal = p1 + p2;
+    const sub = randomInt(2, sumVal - 1);
+    const finalExp = sumVal - sub;
+
+    const exprStr = `(${base}^${e1})^${k1} · (${base}^${e2})^${k2} : ${base}^${sub} = ${base}^?`;
+
+    return {
+      id,
+      category: 'potencies',
+      topicName: 'Doble potència de potència combinada',
+      difficulty: 4,
+      difficultyLabel: 'Nivell 4: Repte d’Examen',
+      questionPrompt: `Calcula l'exponent final de la base ${base} aplicant totes les propietats:`,
+      expressionDisplay: exprStr,
+      displayType: 'power_expr',
+      correctAnswer: { kind: 'power', base, exp: finalExp },
+      answerDisplay: `${base}^${finalExp} (exponent: ${finalExp})`,
+      steps: [
+        {
+          title: "Pas 1: Resoldre les dues potències de potència",
+          explanation: `(${base}${toSuperscript(e1)})${toSuperscript(k1)} = ${base}${toSuperscript(p1)} i (${base}${toSuperscript(e2)})${toSuperscript(k2)} = ${base}${toSuperscript(p2)}.`,
+          expression: `${base}^${p1} · ${base}^${p2} : ${base}^${sub}`,
+          ruleTag: "Potència d'una potència"
+        },
+        {
+          title: "Pas 2: Producte i divisió finals",
+          explanation: `Sumem ${p1} + ${p2} = ${sumVal} i restem ${sub}: ${sumVal} - ${sub} = ${finalExp}.`,
+          expression: `= ${base}^${finalExp}`,
+          ruleTag: "Suma i resta d'exponents"
+        }
+      ],
+      hints: [
+        `Multiplica primer els exponents de cada parèntesi: ${e1} · ${k1} i ${e2} · ${k2}.`,
+        `Després suma els dos resultats i resta ${sub}.`
+      ],
+      diagnoseMistake: (u) => {
+        const val = u.expVal ?? u.numberVal;
+        if (val === undefined) return null;
+        return {
+          mistakeTitle: "Revisa les multiplicacions d'exponents",
+          explanation: `(${base}${toSuperscript(e1)})${toSuperscript(k1)} = ${base}${toSuperscript(p1)}, (${base}${toSuperscript(e2)})${toSuperscript(k2)} = ${base}${toSuperscript(p2)}. Després ${p1} + ${p2} - ${sub} = ${finalExp}.`,
+          tip: "Recorda: en potència de potència es MULTIPLIQUEN els exponents.",
+          detectedConcept: "Potències de potències combinades"
+        };
+      }
+    };
+  }
+
+  // Variant 6: Combined powers WITH negative exponent! e.g. (b^e1 · b^(-neg)) : b^e2 = b^?
+  const neg = randomInt(2, 4);
+  const e1 = randomInt(neg + 2, neg + 6);
+  const prodExp = e1 - neg;
+  const e2 = randomInt(1, prodExp + 2); // can yield positive, 0, or negative exponent!
+  const finalExp = prodExp - e2;
+
+  const exprStr = `(${base}^${e1} · ${base}^(-${neg})) : ${base}^${e2} = ${base}^?`;
 
   return {
     id,
     category: 'potencies',
-    topicName: 'Simplificació combinada de potències',
+    topicName: 'Potències combinades amb exponent negatiu',
     difficulty: 4,
     difficultyLabel: 'Nivell 4: Repte d’Examen',
-    questionPrompt: `Troba l'exponent final de la base ${base} en simplificar tota l'expressió:`,
+    questionPrompt: `Simplifica tenint en compte els signes dels exponents (base ${base}):`,
     expressionDisplay: exprStr,
     displayType: 'power_expr',
     correctAnswer: { kind: 'power', base, exp: finalExp },
-    answerDisplay: `${base}^${finalExp} (exponent: ${finalExp})`,
-    steps,
+    answerDisplay: `${base}^${finalExp < 0 ? `(${finalExp})` : finalExp} (exponent: ${finalExp})`,
+    steps: [
+      {
+        title: "Pas 1: Sumar exponents dins del parèntesi",
+        explanation: `En multiplicar bases iguals se sumen exponents: ${e1} + (-${neg}) = ${e1} - ${neg} = ${prodExp}.`,
+        expression: `${base}^${prodExp} : ${base}^${e2}`,
+        ruleTag: "Producte amb exponent negatiu"
+      },
+      {
+        title: "Pas 2: Restar l'exponent del divisor",
+        explanation: `En la divisió es resten exponents: ${prodExp} - ${e2} = ${finalExp}.`,
+        expression: `= ${base}^${finalExp < 0 ? `(${finalExp})` : finalExp}`,
+        ruleTag: "Quocient mateixa base"
+      }
+    ],
     hints: [
-      `Fes primer el parèntesi interior (${base}^${e1} · ${base}^${e2}) sumant exponents.`,
-      `Després multiplica per l'exponent exterior ${outer}.`,
-      `Finalment resta l'exponent del divisor (${subtract}).`
+      `Dins del parèntesi suma ${e1} + (-${neg}).`,
+      `Al resultat resta-li l'exponent del divisor (${e2}).`
     ],
     diagnoseMistake: (u) => {
       const val = u.expVal ?? u.numberVal;
       if (val === undefined) return null;
-      if (val === -finalExp) {
+      if (val === e1 + neg - e2) {
         return {
-          mistakeTitle: "Signe de l'exponent erroni!",
-          explanation: `L'exponent ha de ser positiu ${finalExp}.`,
-          tip: "Revisa la resta d'exponents de l'últim pas.",
-          detectedConcept: "Operacions amb exponents"
+          mistakeTitle: "Compte amb el signe de l'exponent negatiu!",
+          explanation: `Has sumat +${neg} en lloc de sumar (-${neg}). Recorda: ${e1} + (-${neg}) = ${prodExp}.`,
+          tip: "Un exponent negatiu resta quan el sumes al producte.",
+          detectedConcept: "Suma d'exponents amb signe negatiu"
         };
       }
       return {
-        mistakeTitle: "Revisa l'ordre de propietats",
-        explanation: `Recorda la seqüència: 1r Sumar dins parèntesi -> 2n Multiplicar pel quadrat -> 3r Restar el divisor.`,
-        tip: `[ (${base}^${innerSum})² ] = ${base}^${multiplied}, i després restem ${subtract}.`,
-        detectedConcept: "Combinació de propietats de potències"
+        mistakeTitle: "Revisa els signes dels exponents",
+        explanation: `1r: ${e1} + (-${neg}) = ${prodExp}. 2n: ${prodExp} - ${e2} = ${finalExp}.`,
+        tip: "Respecta els signes negatius exactament com amb els nombres enters.",
+        detectedConcept: "Exponents enters en operacions combinades"
       };
     }
   };
