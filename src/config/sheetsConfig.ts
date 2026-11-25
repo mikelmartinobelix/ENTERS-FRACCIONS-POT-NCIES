@@ -14,4 +14,5 @@ export const STUDENT_ACCESS_PASSWORD = 'Macitec3';
  * Exemple: 'https://script.google.com/macros/s/AKfycbx.../exec'
  */
 export const DEFAULT_APPS_SCRIPT_URL: string =
-  (import.meta.env.VITE_APPS_SCRIPT_URL as string | undefined)?.trim() || '';
+  (import.meta.env.VITE_APPS_SCRIPT_URL as string | undefined)?.trim() ||
+  'https://script.google.com/macros/s/AKfycbzic_dxh8Uq5ZW2aR5AJrWwK8YDbG8crpmQkIIuoVT63V7utHQXLLOg9LGyrIQHbKWc/exec';
