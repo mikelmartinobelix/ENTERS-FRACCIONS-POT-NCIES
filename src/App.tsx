@@ -30,6 +30,12 @@ import {
   logExerciseAttempt,
   testConnection
 } from './services/firebase';
+import {
+  captureSheetsUrlFromLocation,
+  registerStudentInSheets,
+  logExerciseInSheets
+} from './services/sheetsSync';
+import { STUDENT_ACCESS_PASSWORD } from './config/sheetsConfig';
 
 import {
   Sparkles,
@@ -59,6 +65,7 @@ import confetti from 'canvas-confetti';
 const STORAGE_KEY_STATS = 'mates3r_stats_v1';
 const STORAGE_KEY_FAILED = 'mates3r_failed_v1';
 const STORAGE_KEY_STUDENT = 'mates3r_student_profile';
+const STORAGE_KEY_ACCESS = 'mates3r_access_verified_v1';
 
 const INITIAL_STATS: UserStats = {
   solvedTotal: 0,
@@ -90,7 +97,15 @@ export default function App() {
     }
   });
   const [isStudentModalOpen, setIsStudentModalOpen] = useState<boolean>(() => {
-    return !localStorage.getItem(STORAGE_KEY_STUDENT);
+    try {
+      const savedStudentRaw = localStorage.getItem(STORAGE_KEY_STUDENT);
+      const savedAccess = sessionStorage.getItem(STORAGE_KEY_ACCESS);
+      if (!savedStudentRaw || savedAccess !== STUDENT_ACCESS_PASSWORD) return true;
+      const parsed = JSON.parse(savedStudentRaw) as StudentProfile;
+      return !parsed?.name || parsed.name === 'Alumne Convidat';
+    } catch {
+      return true;
+    }
   });
   const [isTeacherDashboardOpen, setIsTeacherDashboardOpen] = useState<boolean>(false);
   const [teacherDashboardTab, setTeacherDashboardTab] = useState<'alumnes' | 'activitat' | 'compartir'>('alumnes');
@@ -140,8 +155,9 @@ export default function App() {
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [darkMode, setDarkMode] = useState<boolean>(false);
 
-  // Test Firebase connection on boot
+  // Capture ?sheets=... param and test Firebase connection on boot
   useEffect(() => {
+    captureSheetsUrlFromLocation();
     testConnection();
   }, []);
 
@@ -204,8 +220,10 @@ export default function App() {
     loadNewExercise(cat, catLevel);
   };
 
-  // Handle saving student name and group
-  const handleSaveStudent = (name: string, group: string) => {
+  // Handle saving student name, group and verified access password
+  const handleSaveStudent = (name: string, group: string, accessCode: string) => {
+    if (accessCode !== STUDENT_ACCESS_PASSWORD) return;
+
     const studentId = `${name}-${group}`
       .toLowerCase()
       .normalize('NFD')
@@ -231,18 +249,22 @@ export default function App() {
     };
     setStudentProfile(localProfile);
     localStorage.setItem(STORAGE_KEY_STUDENT, JSON.stringify(localProfile));
+    sessionStorage.setItem(STORAGE_KEY_ACCESS, accessCode);
     setIsStudentModalOpen(false);
 
-    // Sync in background without blocking UI
+    // Sync to local registry, Firestore and Google Sheets in background without blocking UI
     registerOrLoadStudent(name, group)
       .then((updated) => {
         if (updated) {
           setStudentProfile(updated);
           localStorage.setItem(STORAGE_KEY_STUDENT, JSON.stringify(updated));
+          registerStudentInSheets(updated, accessCode);
+        } else {
+          registerStudentInSheets(localProfile, accessCode);
         }
       })
       .catch(() => {
-        // Silently keep localProfile
+        registerStudentInSheets(localProfile, accessCode);
       });
   };
 
@@ -400,7 +422,7 @@ export default function App() {
       }));
     }
 
-    // Sync to Firebase Firestore in real-time
+    // Sync to Firebase Firestore & Google Sheets in real-time
     if (studentProfile) {
       logExerciseAttempt(
         studentProfile,
@@ -411,7 +433,21 @@ export default function App() {
         currentExercise.answerDisplay,
         ansCorrect,
         calculatedDiagnosis?.mistakeTitle
-      );
+      ).then((updatedStudent) => {
+        setStudentProfile(updatedStudent);
+        localStorage.setItem(STORAGE_KEY_STUDENT, JSON.stringify(updatedStudent));
+        logExerciseInSheets(
+          updatedStudent,
+          selectedCategory,
+          currentLevel,
+          currentExercise.expressionDisplay,
+          formattedUserAnswer,
+          currentExercise.answerDisplay,
+          ansCorrect,
+          calculatedDiagnosis?.mistakeTitle,
+          STUDENT_ACCESS_PASSWORD
+        );
+      });
     }
   };
 
@@ -797,7 +833,11 @@ export default function App() {
       {/* Student Identification Modal */}
       <StudentIdentificationModal
         isOpen={isStudentModalOpen}
-        canDismiss={!!studentProfile}
+        canDismiss={
+          !!studentProfile &&
+          studentProfile.name !== 'Alumne Convidat' &&
+          sessionStorage.getItem(STORAGE_KEY_ACCESS) === STUDENT_ACCESS_PASSWORD
+        }
         onClose={() => setIsStudentModalOpen(false)}
         initialName={studentProfile?.name}
         initialGroup={studentProfile?.group}

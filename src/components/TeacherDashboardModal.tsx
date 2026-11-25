@@ -20,17 +20,23 @@ import {
   Lock,
   X,
   Search,
-  Filter,
-  TrendingUp,
   AlertTriangle,
-  CheckCircle2,
   Clock,
-  Sparkles,
   ChevronRight,
   Copy,
-  Check
+  Check,
+  FileSpreadsheet,
+  RefreshCw,
+  CheckCircle2
 } from 'lucide-react';
 import { MathView } from './MathView';
+import {
+  getConfiguredSheetsUrl,
+  saveConfiguredSheetsUrl,
+  testSheetsConnection
+} from '../services/sheetsSync';
+import { DEFAULT_APPS_SCRIPT_URL, STUDENT_ACCESS_PASSWORD } from '../config/sheetsConfig';
+import appsScriptCode from '../../google-apps-script/Code.gs?raw';
 
 interface TeacherDashboardModalProps {
   isOpen: boolean;
@@ -58,11 +64,19 @@ export const TeacherDashboardModal: React.FC<TeacherDashboardModalProps> = ({
   const [selectedStudent, setSelectedStudent] = useState<StudentProfile | null>(null);
 
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedScript, setCopiedScript] = useState(false);
+  const [sheetsUrlInput, setSheetsUrlInput] = useState<string>(() => getConfiguredSheetsUrl());
+  const [sheetsTestStatus, setSheetsTestStatus] = useState<{
+    ok?: boolean;
+    message: string;
+    testing: boolean;
+  }>({ message: '', testing: false });
   const [dbStatus, setDbStatus] = useState(() => getFirestoreStatus());
 
   useEffect(() => {
     if (isOpen) {
       setActiveTab(initialTab);
+      setSheetsUrlInput(getConfiguredSheetsUrl());
       setDbStatus(getFirestoreStatus());
       testConnection().then(() => {
         setDbStatus(getFirestoreStatus());
@@ -194,11 +208,13 @@ export const TeacherDashboardModal: React.FC<TeacherDashboardModalProps> = ({
   };
 
   const getShareableUrl = () => {
-    const current = window.location.href.split('#')[0];
-    if (current.includes('ais-dev-')) {
-      return current.replace('ais-dev-', 'ais-pre-');
+    const base = window.location.href.split('#')[0].split('?')[0];
+    const cleanBase = base.includes('ais-dev-') ? base.replace('ais-dev-', 'ais-pre-') : base;
+    const configured = getConfiguredSheetsUrl();
+    if (!DEFAULT_APPS_SCRIPT_URL && configured) {
+      return `${cleanBase}?sheets=${encodeURIComponent(configured)}`;
     }
-    return current;
+    return cleanBase;
   };
   const shareableUrl = getShareableUrl();
 
@@ -206,6 +222,28 @@ export const TeacherDashboardModal: React.FC<TeacherDashboardModalProps> = ({
     navigator.clipboard.writeText(shareableUrl);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
+  };
+
+  const handleCopyAppsScript = () => {
+    navigator.clipboard.writeText(appsScriptCode);
+    setCopiedScript(true);
+    setTimeout(() => setCopiedScript(false), 2500);
+  };
+
+  const handleSaveAndTestSheets = async () => {
+    const trimmed = sheetsUrlInput.trim();
+    saveConfiguredSheetsUrl(trimmed);
+    if (!trimmed) {
+      setSheetsTestStatus({
+        ok: false,
+        message: "URL esborrada. No s'enviarà registre a Google Sheets.",
+        testing: false
+      });
+      return;
+    }
+    setSheetsTestStatus({ message: 'Provant connexió...', testing: true });
+    const result = await testSheetsConnection(trimmed);
+    setSheetsTestStatus({ ok: result.ok, message: result.message, testing: false });
   };
 
   return (
@@ -680,23 +718,94 @@ export const TeacherDashboardModal: React.FC<TeacherDashboardModalProps> = ({
                     </div>
                   </div>
 
+                  {/* Google Sheets + Apps Script Integration Card */}
+                  <div className="bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 p-5 rounded-2xl text-xs space-y-3 shadow-sm">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 font-bold text-emerald-900 dark:text-emerald-200 text-sm">
+                        <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        <span>Registre automàtic a Google Sheets (Apps Script)</span>
+                      </div>
+                      <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-white dark:bg-slate-800 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300">
+                        Contrasenya alumnes: {STUDENT_ACCESS_PASSWORD}
+                      </span>
+                    </div>
+
+                    <p className="text-emerald-900/80 dark:text-emerald-200/80 leading-relaxed">
+                      Cada vegada que un alumne entri amb el seu nom, grup i contrasenya <strong className="font-mono">{STUDENT_ACCESS_PASSWORD}</strong> i resolgui exercicis des de GitHub Pages, quedarà registrat automàticament al teu Google Sheets.
+                    </p>
+
+                    <div className="space-y-1.5">
+                      <label className="font-bold text-emerald-900 dark:text-emerald-200 block">
+                        URL de l&apos;aplicació web d&apos;Apps Script (/exec):
+                      </label>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <input
+                          type="url"
+                          placeholder="https://script.google.com/macros/s/.../exec"
+                          value={sheetsUrlInput}
+                          onChange={(e) => setSheetsUrlInput(e.target.value)}
+                          disabled={Boolean(DEFAULT_APPS_SCRIPT_URL)}
+                          className="flex-1 px-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-800 text-slate-900 dark:text-white font-mono text-[11px] outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-70"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleSaveAndTestSheets}
+                          disabled={sheetsTestStatus.testing}
+                          className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-xl transition flex items-center justify-center gap-1.5 shrink-0"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${sheetsTestStatus.testing ? 'animate-spin' : ''}`} />
+                          <span>Desar i provar</span>
+                        </button>
+                      </div>
+                      {DEFAULT_APPS_SCRIPT_URL && (
+                        <p className="text-[11px] text-emerald-700 dark:text-emerald-300 font-medium">
+                          ✓ Configurada directament al codi / GitHub Pages (<code className="font-mono">sheetsConfig.ts</code>).
+                        </p>
+                      )}
+                      {sheetsTestStatus.message && (
+                        <div
+                          className={`flex items-center gap-1.5 text-[11px] font-semibold pt-0.5 ${
+                            sheetsTestStatus.ok
+                              ? 'text-emerald-700 dark:text-emerald-300'
+                              : 'text-rose-600 dark:text-rose-400'
+                          }`}
+                        >
+                          {sheetsTestStatus.ok ? (
+                            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                          ) : (
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                          )}
+                          <span>{sheetsTestStatus.message}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-emerald-200/70 dark:border-emerald-900/50">
+                      <span className="text-[11px] text-emerald-800 dark:text-emerald-300">
+                        Fitxer a enganxar a <em>Extensions &gt; Apps Script</em> del teu Google Sheets:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleCopyAppsScript}
+                        className="px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-emerald-100 dark:hover:bg-slate-700 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700 rounded-xl font-bold flex items-center gap-1.5 transition"
+                      >
+                        {copiedScript ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedScript ? 'Codi Apps Script copiat!' : 'Copiar codi Apps Script'}</span>
+                      </button>
+                    </div>
+                  </div>
+
                   {/* Firestore activation notice */}
                   {!dbStatus.available && (
                     <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/40 p-4 rounded-2xl text-xs space-y-2 text-amber-900 dark:text-amber-200 shadow-sm">
                       <div className="flex items-center gap-2 font-bold">
                         <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
-                        <span>Sincronització en directe entre els ordinadors/tauletes dels alumnes:</span>
+                        <span>Sincronització opcional amb Firebase (mates-3r-eso-repas):</span>
                       </div>
                       <p className="leading-relaxed">
-                        L'app ja té configurat el teu projecte <strong>mates-3r-eso-repas</strong>. Per rebre les respostes de tota la classe en temps real:
+                        Si també vols veure les dades dins d&apos;aquest Panell Docent sense obrir Google Sheets, assegura&apos;t de crear la base de dades a{' '}
+                        <a href="https://console.firebase.google.com/u/1/project/mates-3r-eso-repas/firestore" target="_blank" rel="noreferrer" className="underline font-bold text-indigo-600 dark:text-indigo-400">Firebase Console</a>.
                       </p>
-                      <ol className="list-decimal list-inside space-y-1 font-medium pl-1">
-                        <li>
-                          Ves a la <a href="https://console.firebase.google.com/u/1/project/mates-3r-eso-repas/firestore" target="_blank" rel="noreferrer" className="underline font-bold text-indigo-600 dark:text-indigo-400">Consola de Firebase (Firestore)</a>.
-                        </li>
-                        <li>Fes clic a <strong>"Crea una base de dades"</strong> (tria <em>Mode de prova</em>).</li>
-                        <li>Fet això, els exercicis de tots els alumnes apareixeran automàticament al teu panell!</li>
-                      </ol>
                     </div>
                   )}
 

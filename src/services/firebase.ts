@@ -264,7 +264,7 @@ export async function logExerciseAttempt(
   correctAnswer: string,
   isCorrect: boolean,
   mistakeTitle?: string
-): Promise<void> {
+): Promise<StudentProfile> {
   const now = Date.now();
   const logId = `log_${now}_${Math.random().toString(36).substring(2, 7)}`;
 
@@ -344,6 +344,8 @@ export async function logExerciseAttempt(
       firestoreErrorMessage = err?.message || 'Error desant a Firestore';
     });
   }
+
+  return updatedStudent;
 }
 
 // Teacher subscriptions: subscribes to Firestore AND falls back to local data immediately
