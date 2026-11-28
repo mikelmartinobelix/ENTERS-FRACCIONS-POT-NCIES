@@ -104,13 +104,24 @@ async function postToSheets(payload: Record<string, unknown>): Promise<void> {
   }
 }
 
+function parseGroupParts(group: string): { course: string; classLetter: string } {
+  const normalized = (group || '').trim();
+  const courses = ['1r ESO', '2n ESO', '3r ESO', '4t ESO'];
+  const matchedCourse = courses.find((c) => normalized.startsWith(c)) || '3r ESO';
+  const classLetter = normalized.replace(matchedCourse, '').trim().toUpperCase() || '-';
+  return { course: matchedCourse, classLetter };
+}
+
 export function registerStudentInSheets(
   student: StudentProfile,
   accessCode: string = STUDENT_ACCESS_PASSWORD
 ): void {
+  const { course, classLetter } = parseGroupParts(student.group);
   void postToSheets({
     action: 'register',
     accessCode,
+    course,
+    classLetter,
     student
   });
 }
@@ -126,9 +137,12 @@ export function logExerciseInSheets(
   mistakeTitle?: string,
   accessCode: string = STUDENT_ACCESS_PASSWORD
 ): void {
+  const { course, classLetter } = parseGroupParts(student.group);
   void postToSheets({
     action: 'exercise',
     accessCode,
+    course,
+    classLetter,
     student,
     exercise: {
       category,

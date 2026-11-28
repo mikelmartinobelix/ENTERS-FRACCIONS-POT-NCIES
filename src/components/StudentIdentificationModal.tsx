@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { User, GraduationCap, ArrowRight, Sparkles, X, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { User, GraduationCap, ArrowRight, X, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { STUDENT_ACCESS_PASSWORD } from '../config/sheetsConfig';
 
 interface StudentIdentificationModalProps {
@@ -16,7 +16,19 @@ interface StudentIdentificationModalProps {
   initialGroup?: string;
 }
 
-const PRESET_GROUPS = ['3r ESO A', '3r ESO B', '3r ESO C', '3r ESO D', 'Reforç'];
+const COURSES = ['1r ESO', '2n ESO', '3r ESO', '4t ESO'] as const;
+const CLASSES = ['A', 'B', 'C'] as const;
+
+type CourseOption = (typeof COURSES)[number];
+type ClassOption = (typeof CLASSES)[number];
+
+function parseInitialGroup(rawGroup?: string): { course: CourseOption; classLetter: ClassOption } {
+  const normalized = (rawGroup || '').trim();
+  const matchedCourse = COURSES.find((c) => normalized.startsWith(c)) ?? '3r ESO';
+  const rest = normalized.replace(matchedCourse, '').trim().toUpperCase();
+  const matchedClass = CLASSES.find((cls) => rest === cls) ?? 'A';
+  return { course: matchedCourse, classLetter: matchedClass };
+}
 
 export const StudentIdentificationModal: React.FC<StudentIdentificationModalProps> = ({
   isOpen,
@@ -26,23 +38,20 @@ export const StudentIdentificationModal: React.FC<StudentIdentificationModalProp
   initialName = '',
   initialGroup = '3r ESO A'
 }) => {
+  const initialParsed = parseInitialGroup(initialGroup);
   const [name, setName] = useState(initialName);
-  const [group, setGroup] = useState(PRESET_GROUPS.includes(initialGroup) ? initialGroup : '3r ESO A');
-  const [customGroup, setCustomGroup] = useState(
-    initialGroup && !PRESET_GROUPS.includes(initialGroup) ? initialGroup : ''
-  );
-  const [isCustom, setIsCustom] = useState(Boolean(initialGroup && !PRESET_GROUPS.includes(initialGroup)));
+  const [course, setCourse] = useState<CourseOption>(initialParsed.course);
+  const [classLetter, setClassLetter] = useState<ClassOption>(initialParsed.classLetter);
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
     if (isOpen) {
+      const parsed = parseInitialGroup(initialGroup);
       setName(initialName || '');
-      const hasCustom = Boolean(initialGroup && !PRESET_GROUPS.includes(initialGroup));
-      setIsCustom(hasCustom);
-      setGroup(hasCustom ? '3r ESO A' : initialGroup || '3r ESO A');
-      setCustomGroup(hasCustom ? initialGroup || '' : '');
+      setCourse(parsed.course);
+      setClassLetter(parsed.classLetter);
       setPassword('');
       setErrorMsg('');
     }
@@ -50,17 +59,13 @@ export const StudentIdentificationModal: React.FC<StudentIdentificationModalProp
 
   if (!isOpen) return null;
 
+  const selectedGroup = `${course} ${classLetter}`;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedName = name.trim();
     if (!trimmedName || trimmedName.split(/\s+/).length < 2) {
       setErrorMsg('Escriu el teu nom i cognom (com a mínim dues paraules).');
-      return;
-    }
-
-    const finalGroup = isCustom ? customGroup.trim() : group;
-    if (!finalGroup) {
-      setErrorMsg('Indica el teu grup classe.');
       return;
     }
 
@@ -71,7 +76,7 @@ export const StudentIdentificationModal: React.FC<StudentIdentificationModalProp
     }
 
     setErrorMsg('');
-    onSaveStudent(trimmedName, finalGroup, trimmedPassword);
+    onSaveStudent(trimmedName, selectedGroup, trimmedPassword);
   };
 
   return (
@@ -83,22 +88,22 @@ export const StudentIdentificationModal: React.FC<StudentIdentificationModalProp
             <button
               type="button"
               onClick={onClose}
-              className="absolute right-0 top-0 p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-lg transition"
+              className="absolute right-0 top-0 p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
               title="Tancar"
             >
               <X className="w-5 h-5" />
             </button>
           )}
 
-          <div className="w-14 h-14 mx-auto rounded-3xl bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shadow-inner">
-            <GraduationCap className="w-8 h-8" />
+          <div className="w-14 h-14 mx-auto rounded-2xl bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 flex items-center justify-center border border-indigo-100 dark:border-indigo-900/60">
+            <GraduationCap className="w-7 h-7" />
           </div>
 
-          <h2 className="text-xl font-black text-slate-900 dark:text-white">
-            Benvingut/da a Mates 3r d&apos;ESO!
+          <h2 className="text-xl font-extrabold text-slate-900 dark:text-white text-balance">
+            Càlcul: enters, potències i fraccions
           </h2>
-          <p className="text-xs text-slate-500 max-w-xs mx-auto">
-            Introdueix el teu nom i cognom, el teu grup classe i la contrasenya d&apos;accés per registrar la pràctica.
+          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs mx-auto leading-relaxed">
+            Introdueix el teu nom i cognoms, tria curs i classe, i escriu la contrasenya d&apos;accés.
           </p>
         </div>
 
@@ -123,58 +128,59 @@ export const StudentIdentificationModal: React.FC<StudentIdentificationModalProp
             />
           </div>
 
+          {/* Course selector (1r, 2n, 3r, 4t ESO) */}
           <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-              Grup classe:
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {PRESET_GROUPS.map((g) => (
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-slate-700 dark:text-slate-300">Curs:</span>
+              <span className="text-slate-500 dark:text-slate-400 font-medium">
+                Grup: <strong className="text-indigo-600 dark:text-indigo-400">{selectedGroup}</strong>
+              </span>
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {COURSES.map((c) => (
                 <button
-                  key={g}
+                  key={c}
                   type="button"
                   onClick={() => {
-                    setGroup(g);
-                    setIsCustom(false);
+                    setCourse(c);
                     if (errorMsg) setErrorMsg('');
                   }}
-                  className={`py-2 px-3 rounded-xl text-xs font-bold transition border ${
-                    !isCustom && group === g
+                  className={`min-h-[42px] py-2 px-2 rounded-xl text-xs font-bold whitespace-nowrap transition border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                    course === c
                       ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
                       : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-indigo-400'
                   }`}
                 >
-                  {g}
+                  {c}
                 </button>
               ))}
-              <button
-                type="button"
-                onClick={() => {
-                  setIsCustom(true);
-                  if (errorMsg) setErrorMsg('');
-                }}
-                className={`py-2 px-3 rounded-xl text-xs font-bold transition border ${
-                  isCustom
-                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-indigo-400'
-                }`}
-              >
-                Altre grup...
-              </button>
             </div>
+          </div>
 
-            {isCustom && (
-              <input
-                type="text"
-                required
-                placeholder="Escriu el nom del teu grup..."
-                value={customGroup}
-                onChange={(e) => {
-                  setCustomGroup(e.target.value);
-                  if (errorMsg) setErrorMsg('');
-                }}
-                className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-xs font-medium focus:ring-2 focus:ring-indigo-500 outline-none transition"
-              />
-            )}
+          {/* Class selector (A, B, C) */}
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block">
+              Classe:
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {CLASSES.map((cls) => (
+                <button
+                  key={cls}
+                  type="button"
+                  onClick={() => {
+                    setClassLetter(cls);
+                    if (errorMsg) setErrorMsg('');
+                  }}
+                  className={`min-h-[42px] py-2 px-4 rounded-xl text-sm font-bold whitespace-nowrap transition border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                    classLetter === cls
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-indigo-400'
+                  }`}
+                >
+                  Classe {cls}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Access Password */}
@@ -218,20 +224,13 @@ export const StudentIdentificationModal: React.FC<StudentIdentificationModalProp
             <button
               type="submit"
               disabled={!name.trim() || !password.trim()}
-              className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-600 disabled:opacity-40 text-white font-bold text-sm rounded-2xl shadow-lg shadow-indigo-500/25 active:scale-95 transition flex items-center justify-center gap-2"
+              className="w-full min-h-[46px] py-3 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-bold text-sm rounded-2xl shadow-md active:scale-95 transition flex items-center justify-center gap-2"
             >
               <span>Entrar i començar a practicar</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
         </form>
-
-        <div className="bg-indigo-50/60 dark:bg-indigo-950/40 p-3 rounded-2xl border border-indigo-100 dark:border-indigo-900/50 flex items-center gap-2 text-[11px] text-indigo-900 dark:text-indigo-300">
-          <Sparkles className="w-4 h-4 text-indigo-500 shrink-0" />
-          <span>
-            Cada sessió queda registrada al full de seguiment del professorat per veure la teva evolució.
-          </span>
-        </div>
       </div>
     </div>
   );

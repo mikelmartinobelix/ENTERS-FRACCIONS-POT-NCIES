@@ -16,6 +16,7 @@ import { generateExercise } from './utils/mathEngine';
 import { sounds } from './utils/audio';
 import { MathView } from './components/MathView';
 import { Keypad } from './components/Keypad';
+import { GuidedCombinedWorkbench } from './components/GuidedCombinedWorkbench';
 import { Scratchpad } from './components/Scratchpad';
 import { StepByStepView } from './components/StepByStepView';
 import { TheoryGuideModal } from './components/TheoryGuideModal';
@@ -23,7 +24,6 @@ import { ErrorsNotebookModal } from './components/ErrorsNotebookModal';
 import { StatsModal } from './components/StatsModal';
 import { ExamModeModal } from './components/ExamModeModal';
 import { StudentIdentificationModal } from './components/StudentIdentificationModal';
-import { TeacherDashboardModal } from './components/TeacherDashboardModal';
 import {
   StudentProfile,
   registerOrLoadStudent,
@@ -57,8 +57,8 @@ import {
   Sun,
   Moon,
   User,
-  GraduationCap,
-  Share2
+  ListOrdered,
+  Calculator
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -107,8 +107,6 @@ export default function App() {
       return true;
     }
   });
-  const [isTeacherDashboardOpen, setIsTeacherDashboardOpen] = useState<boolean>(false);
-  const [teacherDashboardTab, setTeacherDashboardTab] = useState<'alumnes' | 'activitat' | 'compartir'>('alumnes');
 
   // Stats & Error notebook state
   const [stats, setStats] = useState<UserStats>(() => {
@@ -138,6 +136,7 @@ export default function App() {
   const [activeSlot, setActiveSlot] = useState<'num' | 'den' | 'single'>('num');
 
   // Resolution & Feedback state
+  const [resolutionMode, setResolutionMode] = useState<'direct' | 'guided'>('direct');
   const [isAnswerSubmitted, setIsAnswerSubmitted] = useState<boolean>(false);
   const [isCorrect, setIsCorrect] = useState<boolean>(false);
   const [userAnswerFormatted, setUserAnswerFormatted] = useState<string>('');
@@ -451,6 +450,100 @@ export default function App() {
     }
   };
 
+  // Complete guided step-by-step combined operation
+  const handleGuidedComplete = ({
+    priorityMistakes,
+    arithmeticMistakes
+  }: {
+    priorityMistakes: number;
+    arithmeticMistakes: number;
+  }) => {
+    if (isAnswerSubmitted) return;
+    const cleanSolve = priorityMistakes === 0 && arithmeticMistakes === 0;
+    const formattedUserAnswer = currentExercise.answerDisplay;
+
+    setIsCorrect(true);
+    setUserAnswerFormatted(formattedUserAnswer);
+    setCurrentDiagnosis(null);
+    setIsAnswerSubmitted(true);
+
+    sounds.playCorrect();
+    const nextStreak = stats.currentStreak + 1;
+    const nextBestStreak = Math.max(stats.bestStreak, nextStreak);
+    const nextConsecutive = cleanSolve ? currentConsecutiveCorrect + 1 : currentConsecutiveCorrect;
+    setCurrentConsecutiveCorrect(nextConsecutive);
+
+    let nextLevel = currentLevel;
+    if (isAdaptiveMode && cleanSolve && nextConsecutive >= 3 && currentLevel < 4) {
+      nextLevel = (currentLevel + 1) as DifficultyLevel;
+      sounds.playLevelUp();
+      confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
+      setCurrentConsecutiveCorrect(0);
+    } else if (nextStreak % 5 === 0) {
+      confetti({ particleCount: 50, spread: 50, origin: { y: 0.7 } });
+    }
+
+    setFailedExercises((prev) =>
+      prev.map((f) =>
+        f.exercise.expressionDisplay === currentExercise.expressionDisplay
+          ? { ...f, mastered: true }
+          : f
+      )
+    );
+
+    const updatedBadges = checkBadges(nextStreak, nextLevel);
+    setStats((prev) => ({
+      ...prev,
+      solvedTotal: prev.solvedTotal + 1,
+      correctFirstTry: prev.correctFirstTry + (cleanSolve && currentHintIndex === -1 ? 1 : 0),
+      currentStreak: nextStreak,
+      bestStreak: nextBestStreak,
+      categoryMastery: {
+        ...prev.categoryMastery,
+        [selectedCategory]: {
+          total: prev.categoryMastery[selectedCategory].total + 1,
+          correct: prev.categoryMastery[selectedCategory].correct + 1,
+          level: nextLevel
+        }
+      },
+      badges: updatedBadges
+    }));
+
+    const guidedNote =
+      priorityMistakes > 0
+        ? `Guiat (${priorityMistakes} errada/es de prioritat)`
+        : arithmeticMistakes > 0
+        ? `Guiat (${arithmeticMistakes} errada/es de càlcul)`
+        : undefined;
+
+    if (studentProfile) {
+      logExerciseAttempt(
+        studentProfile,
+        selectedCategory,
+        currentLevel,
+        currentExercise.expressionDisplay,
+        formattedUserAnswer,
+        currentExercise.answerDisplay,
+        true,
+        guidedNote
+      ).then((updatedStudent) => {
+        setStudentProfile(updatedStudent);
+        localStorage.setItem(STORAGE_KEY_STUDENT, JSON.stringify(updatedStudent));
+        logExerciseInSheets(
+          updatedStudent,
+          selectedCategory,
+          currentLevel,
+          currentExercise.expressionDisplay,
+          formattedUserAnswer,
+          currentExercise.answerDisplay,
+          true,
+          guidedNote,
+          STUDENT_ACCESS_PASSWORD
+        );
+      });
+    }
+  };
+
   const handleNextExercise = () => {
     loadNewExercise();
   };
@@ -473,30 +566,20 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200">
       {/* Top Header Bar */}
-      <header className="sticky top-0 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 py-2.5">
-        <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
-          {/* Logo & Subtitle */}
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 to-indigo-500 text-white flex items-center justify-center font-black text-xl shadow-md shadow-indigo-500/20">
+      <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 py-3">
+        <div className="max-w-5xl mx-auto flex flex-col items-center gap-2.5">
+          {/* App Title Row */}
+          <div className="flex items-center justify-center gap-2.5 text-center">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-500 text-white flex items-center justify-center font-black text-lg shadow-md shadow-indigo-500/20 shrink-0">
               ∑
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-extrabold text-sm md:text-base tracking-tight text-slate-900 dark:text-white">
-                  Mates 3r ESO
-                </h1>
-                <span className="text-[10px] font-bold bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-900/50">
-                  Catalunya
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500">
-                Entrenador Adaptatiu de Càlcul Bàsic
-              </p>
-            </div>
+            <h1 className="font-extrabold text-base sm:text-xl tracking-tight text-slate-900 dark:text-white text-balance">
+              Càlcul: enters, potències i fraccions
+            </h1>
           </div>
 
-          {/* Quick Stats & Action Buttons */}
-          <div className="flex items-center gap-1.5 md:gap-2">
+          {/* Quick Stats & Action Buttons Row */}
+          <div className="w-full flex flex-wrap items-center justify-center gap-1.5 md:gap-2">
             {/* Student ID badge */}
             <button
               onClick={() => setIsStudentModalOpen(true)}
@@ -504,40 +587,14 @@ export default function App() {
               title="Canviar d'alumne o grup"
             >
               <User className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-              <span className="truncate max-w-[80px] sm:max-w-[110px]">
+              <span className="truncate max-w-[100px] sm:max-w-[150px]">
                 {studentProfile ? studentProfile.name.split(' ')[0] : "Identifica't"}
               </span>
               {studentProfile && (
-                <span className="text-[10px] bg-indigo-200/70 dark:bg-indigo-800/80 px-1.5 py-0.5 rounded-full font-normal hidden sm:inline">
+                <span className="text-[10px] bg-indigo-200/70 dark:bg-indigo-800/80 px-1.5 py-0.5 rounded-full font-semibold">
                   {studentProfile.group}
                 </span>
               )}
-            </button>
-
-            {/* Compartir App button */}
-            <button
-              onClick={() => {
-                setTeacherDashboardTab('compartir');
-                setIsTeacherDashboardOpen(true);
-              }}
-              title="Obtenir l'enllaç i el codi QR per compartir amb els alumnes"
-              className="px-3 py-1.5 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition"
-            >
-              <Share2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-              <span className="hidden sm:inline">Compartir</span>
-            </button>
-
-            {/* Teacher Dashboard button */}
-            <button
-              onClick={() => {
-                setTeacherDashboardTab('alumnes');
-                setIsTeacherDashboardOpen(true);
-              }}
-              title="Panell de Control del Professor (Registres dels alumnes)"
-              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition"
-            >
-              <GraduationCap className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Panell Docent</span>
             </button>
 
             {/* Streak counter */}
@@ -560,7 +617,7 @@ export default function App() {
               }`}
             >
               <PenLine className="w-3.5 h-3.5 text-amber-500" />
-              <span className="hidden md:inline">Pissarra</span>
+              <span className="hidden sm:inline">Pissarra</span>
             </button>
 
             {/* Guia de teoria Button */}
@@ -570,7 +627,7 @@ export default function App() {
               className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-sm"
             >
               <BookOpen className="w-3.5 h-3.5 text-indigo-500" />
-              <span className="hidden md:inline">Regles</span>
+              <span className="hidden sm:inline">Regles</span>
             </button>
 
             {/* Quadern d'errors Button */}
@@ -580,7 +637,7 @@ export default function App() {
               className="relative px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-sm"
             >
               <BookmarkCheck className="w-3.5 h-3.5 text-rose-500" />
-              <span className="hidden md:inline">Errors</span>
+              <span className="hidden sm:inline">Errors</span>
               {pendingErrorsCount > 0 && (
                 <span className="w-4 h-4 bg-rose-500 text-white text-[10px] rounded-full flex items-center justify-center font-extrabold">
                   {pendingErrorsCount}
@@ -600,11 +657,11 @@ export default function App() {
             {/* Exam Mode Button */}
             <button
               onClick={() => setIsExamOpen(true)}
-              title="Simulacre d'Examen 3r ESO"
+              title="Simulacre d'Examen d'ESO"
               className="px-3 py-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition"
             >
               <Award className="w-3.5 h-3.5" />
-              <span className="hidden lg:inline">Simulacre</span>
+              <span className="hidden sm:inline">Simulacre</span>
             </button>
 
             {/* Sound Toggle */}
@@ -789,20 +846,61 @@ export default function App() {
             </div>
           )}
 
-          {/* Input & Keypad or Step-by-Step Resolution */}
+          {/* Resolution Mode Toggle for Combined Integer Operations */}
+          {!isAnswerSubmitted &&
+            currentExercise.guidedSteps &&
+            currentExercise.guidedSteps.length > 0 && (
+              <div className="w-full max-w-md flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setResolutionMode('direct')}
+                  className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 whitespace-nowrap transition ${
+                    resolutionMode === 'direct'
+                      ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Calculator className="w-3.5 h-3.5 shrink-0" />
+                  <span>Resposta directa</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setResolutionMode('guided')}
+                  className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 whitespace-nowrap transition ${
+                    resolutionMode === 'guided'
+                      ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <ListOrdered className="w-3.5 h-3.5 shrink-0" />
+                  <span>Resolució pas a pas</span>
+                </button>
+              </div>
+            )}
+
+          {/* Input & Keypad, Guided Step-by-Step Workbench, or Resolution Summary */}
           {!isAnswerSubmitted ? (
-            <Keypad
-              exercise={currentExercise}
-              numInput={numInput}
-              denInput={denInput}
-              activeSlot={activeSlot}
-              onSlotChange={setActiveSlot}
-              onInputChange={(slot, val) => {
-                if (slot === 'den') setDenInput(val);
-                else setNumInput(val);
-              }}
-              onSubmit={handleSubmitAnswer}
-            />
+            currentExercise.guidedSteps &&
+            currentExercise.guidedSteps.length > 0 &&
+            resolutionMode === 'guided' ? (
+              <GuidedCombinedWorkbench
+                exercise={currentExercise}
+                onComplete={handleGuidedComplete}
+              />
+            ) : (
+              <Keypad
+                exercise={currentExercise}
+                numInput={numInput}
+                denInput={denInput}
+                activeSlot={activeSlot}
+                onSlotChange={setActiveSlot}
+                onInputChange={(slot, val) => {
+                  if (slot === 'den') setDenInput(val);
+                  else setNumInput(val);
+                }}
+                onSubmit={handleSubmitAnswer}
+              />
+            )
           ) : (
             <div className="w-full text-left">
               <StepByStepView
@@ -822,7 +920,7 @@ export default function App() {
         <div className="bg-white/60 dark:bg-slate-900/60 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-start gap-3 text-xs text-slate-600 dark:text-slate-400">
           <HelpCircle className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
           <p>
-            <strong>Consell per a 3r d'ESO:</strong> Les matemàtiques no es tracten de no equivocar-se mai, sinó d'entendre <em>per què</em> ens equivoquem. Si falles, consulta el pas a pas per descobrir exactament on s'ha desviat el càlcul!
+            <strong>Consell d&apos;estudi:</strong> Les matemàtiques no es tracten de no equivocar-se mai, sinó d&apos;entendre <em>per què</em> ens equivoquem. Si falles, consulta el pas a pas per descobrir exactament on s&apos;ha desviat el càlcul!
           </p>
         </div>
       </main>
@@ -842,13 +940,6 @@ export default function App() {
         initialName={studentProfile?.name}
         initialGroup={studentProfile?.group}
         onSaveStudent={handleSaveStudent}
-      />
-
-      {/* Teacher Dashboard Modal */}
-      <TeacherDashboardModal
-        isOpen={isTeacherDashboardOpen}
-        onClose={() => setIsTeacherDashboardOpen(false)}
-        initialTab={teacherDashboardTab}
       />
 
       {/* Theory & Cheat-Sheet Modal */}

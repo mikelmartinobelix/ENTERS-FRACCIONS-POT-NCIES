@@ -38,6 +38,30 @@ export interface MistakeDiagnosis {
   detectedConcept: string;
 }
 
+export interface GuidedOperationOption {
+  id: string;
+  label: string;
+  isCorrect: boolean;
+  errorKind?: 'add_sub_before_priority' | 'bracket_order';
+  feedbackMessage: string;
+  subExpression?: string;
+  expectedValue?: number;
+  resultExpression?: string;
+  subMistakeHint?: string;
+  nextStepId?: string | null;
+}
+
+export interface GuidedStepNode {
+  id: string;
+  promptExpression: string;
+  stepInstruction: string;
+  options: GuidedOperationOption[];
+  directSubExpression?: string;
+  directExpectedValue?: number;
+  directResultExpression?: string;
+  directMistakeHint?: string;
+}
+
 export interface MathExercise {
   id: string;
   category: MathCategory;
@@ -51,6 +75,7 @@ export interface MathExercise {
   correctAnswer: AnswerType;
   answerDisplay: string;
   steps: ResolutionStep[];
+  guidedSteps?: GuidedStepNode[];
   hints: string[];
   diagnoseMistake: (userAnswer: {
     numberVal?: number;

@@ -10,7 +10,9 @@ import {
   ResolutionStep,
   MistakeDiagnosis,
   AnswerType,
-  FractionValue
+  FractionValue,
+  GuidedStepNode,
+  GuidedOperationOption
 } from '../types/math';
 
 // Basic arithmetic utilities
@@ -321,73 +323,144 @@ function generateEntersLevel1(): MathExercise {
   }
 }
 
-function generateEntersLevel2(): MathExercise {
-  // 3 terms with hierarchy: e.g. a - b · c or a · b + c : d
-  const id = `ent-2-${Date.now()}-${randomInt(100, 999)}`;
-  const a = randomInt(-10, 15);
-  const b = randomNonZero(-6, 6);
-  const c = randomNonZero(-6, 6);
-  // a - b · c
-  const mult = b * c;
-  const result = a - mult;
+const PRIORITY_RULE_MSG =
+  'Les sumes i les restes són les últimes perquè no es poden sumar ni restar números amb operacions.';
 
-  // Common pitfall: (a - b) · c (ignoring hierarchy)
-  const wrongPrecedence = (a - b) * c;
+function generateEntersLevel2(): MathExercise {
+  // 3 terms with hierarchy: a ± b · c  or  a ± div_a : c
+  const id = `ent-2-${Date.now()}-${randomInt(100, 999)}`;
+  const useAddition = Math.random() > 0.5;
+  const useDivision = Math.random() > 0.45;
+  const op1 = useAddition ? '+' : '-';
+  const op2 = useDivision ? ':' : '·';
+
+  const a = randomInt(-10, 15);
+  let b = 0;
+  let c = 0;
+  let op2Val = 0;
+
+  if (useDivision) {
+    c = randomNonZero(-6, 6);
+    op2Val = randomNonZero(-6, 6);
+    b = c * op2Val;
+  } else {
+    b = randomNonZero(-6, 6);
+    c = randomNonZero(-6, 6);
+    op2Val = b * c;
+  }
+
+  const result = useAddition ? a + op2Val : a - op2Val;
+
+  // Common pitfall: doing a ± b before multiplying/dividing by c
+  const firstPair = useAddition ? a + b : a - b;
+  const wrongPrecedence = useDivision
+    ? firstPair % c === 0
+      ? firstPair / c
+      : null
+    : firstPair * c;
+
+  const exprDisplay = `${a} ${op1} ${formatSigned(b)} ${op2} ${formatSigned(c)}`;
+  const subExpr = `${formatSigned(b)} ${op2} ${formatSigned(c)}`;
 
   const steps: ResolutionStep[] = [
     {
-      title: "Pas 1: Respectar la jerarquia d'operacions (PEMDAS)",
-      explanation: `Dins de l'expressió tenim una resta i una multiplicació. La JERARQUIA diu: primer fem la multiplicació (${formatSigned(b)} · ${formatSigned(c)}) abans de la resta!`,
-      expression: `${a} - [${formatSigned(b)} · ${formatSigned(c)}]`,
+      title: "Pas 1: Respectar la jerarquia d'operacions",
+      explanation: `${PRIORITY_RULE_MSG} Per tant, primer fem ${useDivision ? 'la divisió' : 'la multiplicació'} (${subExpr}) abans que ${useAddition ? 'la suma' : 'la resta'}.`,
+      expression: `${a} ${op1} [${subExpr}]`,
       ruleTag: "Jerarquia d'operacions"
     },
     {
-      title: "Pas 2: Calcular el producte",
-      explanation: `${formatSigned(b)} · ${formatSigned(c)} = ${mult}.`,
-      expression: `${a} - (${mult})`,
-      ruleTag: "Multiplicació d'enters"
+      title: useDivision ? 'Pas 2: Calcular la divisió' : 'Pas 2: Calcular el producte',
+      explanation: `${subExpr} = ${op2Val}.`,
+      expression: `${a} ${op1} ${formatSigned(op2Val)}`,
+      ruleTag: useDivision ? "Divisió d'enters" : "Multiplicació d'enters"
     },
     {
-      title: "Pas 3: Fer la resta final amb la regla dels signes",
-      explanation: mult < 0
-        ? `Restar un nombre negatiu és sumar: ${a} - (${mult}) = ${a} + ${Math.abs(mult)} = ${result}.`
-        : `Calculem: ${a} - ${mult} = ${result}.`,
+      title: useAddition ? 'Pas 3: Fer la suma final' : 'Pas 3: Fer la resta final',
+      explanation:
+        !useAddition && op2Val < 0
+          ? `Restar un nombre negatiu és sumar: ${a} - (${op2Val}) = ${a} + ${Math.abs(op2Val)} = ${result}.`
+          : `Calculem: ${a} ${op1} ${formatSigned(op2Val)} = ${result}.`,
       expression: `= ${result}`
+    }
+  ];
+
+  const guidedSteps: GuidedStepNode[] = [
+    {
+      id: 'step-1',
+      promptExpression: exprDisplay,
+      stepInstruction: "Pas 1: Quina operació s'ha de fer primer?",
+      options: [
+        {
+          id: 'wrong-addsub',
+          label: `${a} ${op1} ${formatSigned(b)}`,
+          isCorrect: false,
+          errorKind: 'add_sub_before_priority',
+          feedbackMessage: `Ordre incorrecte! ${PRIORITY_RULE_MSG}`
+        },
+        {
+          id: 'right-prio',
+          label: subExpr,
+          isCorrect: true,
+          feedbackMessage: useDivision
+            ? 'Molt bé! La divisió té prioritat sobre les sumes i restes.'
+            : 'Molt bé! La multiplicació té prioritat sobre les sumes i restes.',
+          subExpression: subExpr,
+          expectedValue: op2Val,
+          resultExpression: `${a} ${op1} ${formatSigned(op2Val)}`,
+          subMistakeHint: `Revisa el signe: ${subExpr} = ${op2Val}.`,
+          nextStepId: 'step-2'
+        }
+      ]
+    },
+    {
+      id: 'step-2',
+      promptExpression: `${a} ${op1} ${formatSigned(op2Val)}`,
+      stepInstruction: "Pas 2: Ara que ja no queden operacions prioritàries, calcula el resultat final:",
+      options: [],
+      directSubExpression: `${a} ${op1} ${formatSigned(op2Val)}`,
+      directExpectedValue: result,
+      directResultExpression: `${result}`,
+      directMistakeHint:
+        !useAddition && op2Val < 0
+          ? `Compte amb els dos signes negatius: ${a} - (${op2Val}) = ${a} + ${Math.abs(op2Val)}.`
+          : `Calcula amb compte: ${a} ${op1} ${formatSigned(op2Val)}.`
     }
   ];
 
   return {
     id,
     category: 'enters',
-    topicName: 'Jerarquia: resta i multiplicació',
+    topicName: 'Jerarquia: sumes/restes i multiplicacions/divisions',
     difficulty: 2,
     difficultyLabel: 'Nivell 2: Intermedi',
     questionPrompt: 'Aplica la jerarquia d’operacions per resoldre:',
-    expressionDisplay: `${a} - ${formatSigned(b)} · ${formatSigned(c)}`,
+    expressionDisplay: exprDisplay,
     displayType: 'integer_expr',
     correctAnswer: { kind: 'number', value: result },
     answerDisplay: `${result}`,
     steps,
+    guidedSteps,
     hints: [
-      "Quina operació té prioritat: la resta o la multiplicació? (Recorda: primer multiplicar!)",
-      `Calcula primer el producte: ${formatSigned(b)} · ${formatSigned(c)} = ${mult}.`
+      PRIORITY_RULE_MSG,
+      `Calcula primer: ${subExpr} = ${op2Val}.`
     ],
     diagnoseMistake: (u) => {
       if (u.numberVal === undefined) return null;
-      if (u.numberVal === wrongPrecedence) {
+      if (wrongPrecedence !== null && u.numberVal === wrongPrecedence) {
         return {
-          mistakeTitle: "Has violat la jerarquia d'operacions!",
-          explanation: `Has fet primer la resta (${a} - ${formatSigned(b)} = ${a - b}) i després has multiplicat per ${c}. Això és un error greu!`,
-          tip: "A matemàtiques, les multiplicacions i divisions es fan SEMPRE abans que les sumes i restes, llevat que hi hagi un parèntesi que digui el contrari.",
+          mistakeTitle: "Error de prioritat d'operacions!",
+          explanation: `Has fet primer ${a} ${op1} ${formatSigned(b)} = ${firstPair} i després has ${useDivision ? 'dividit' : 'multiplicat'} per ${c}. ${PRIORITY_RULE_MSG}`,
+          tip: `${PRIORITY_RULE_MSG} Resol sempre primer (${subExpr})!`,
           detectedConcept: "Jerarquia d'operacions (Precedència)"
         };
       }
-      if (u.numberVal === a + mult) {
+      if (u.numberVal === (useAddition ? a - op2Val : a + op2Val)) {
         return {
-          mistakeTitle: "Compte amb el signe de la resta!",
-          explanation: `Has multiplicat correctament, però en restar el producte ${mult} has invertit el signe.`,
-          tip: `L'expressió és ${a} - (${mult}). Revisa com afecta el signe menys.`,
-          detectedConcept: "Resta de productes"
+          mistakeTitle: 'Compte amb el signe!',
+          explanation: `Has calculat bé ${subExpr} = ${op2Val}, però t'has equivocat en el signe de l'operació final.`,
+          tip: `L'expressió queda ${a} ${op1} ${formatSigned(op2Val)}. Revisa la regla dels signes.`,
+          detectedConcept: 'Signe en sumes i restes'
         };
       }
       return null;
@@ -405,45 +478,190 @@ function generateEntersLevel3(): MathExercise {
   const d = randomNonZero(-4, 4);
   const e = randomInt(1, 6);
   const f = e + randomNonZero(-4, 4); // so e - f is small non-zero
-  
+
   const innerPar = e - f;
   const multInner = d * innerPar;
   const bracketVal = c - multInner;
   const multOuter = b * bracketVal;
   const result = a - multOuter;
 
+  // Common priority mistakes
+  const wrongInsideBracket = a - b * ((c - d) * innerPar);
+  const wrongOuter = (a - b) * bracketVal;
+  const wrongBoth = (a - b) * ((c - d) * innerPar);
+
   const exprDisplay = `${a} - ${formatSigned(b)} · [ ${c} - ${formatSigned(d)} · (${e} - ${f}) ]`;
 
   const steps: ResolutionStep[] = [
     {
-      title: "Pas 1: Parèntesi més intern (e - f)",
+      title: 'Pas 1: Parèntesi més intern (e - f)',
       explanation: `Segons la jerarquia, comencem de dins cap a fora. Primer calculem (${e} - ${f}) = ${innerPar}.`,
       expression: `${a} - ${formatSigned(b)} · [ ${c} - ${formatSigned(d)} · (${innerPar}) ]`,
-      ruleTag: "Parèntesis interns"
+      ruleTag: 'Parèntesis interns'
     },
     {
-      title: "Pas 2: Multiplicació dins del claudàtor",
-      explanation: `Dins del claudàtor [ ] tenim una resta i una multiplicació. Primer fem ${formatSigned(d)} · (${innerPar}) = ${multInner}.`,
+      title: 'Pas 2: Multiplicació dins del claudàtor',
+      explanation: `Dins del claudàtor [ ] tenim una resta i una multiplicació. ${PRIORITY_RULE_MSG} Fem ${formatSigned(d)} · (${innerPar}) = ${multInner}.`,
       expression: `${a} - ${formatSigned(b)} · [ ${c} - (${multInner}) ]`,
-      ruleTag: "Jerarquia dins claudàtor"
+      ruleTag: 'Jerarquia dins claudàtor'
     },
     {
-      title: "Pas 3: Resoldre el contingut del claudàtor",
+      title: 'Pas 3: Resoldre el contingut del claudàtor',
       explanation: `${c} - (${multInner}) = ${bracketVal}.`,
       expression: `${a} - ${formatSigned(b)} · (${bracketVal})`,
-      ruleTag: "Claudàtor resolt"
+      ruleTag: 'Claudàtor resolt'
     },
     {
-      title: "Pas 4: Multiplicar abans de restar",
-      explanation: `Multipliquem: ${formatSigned(b)} · (${bracketVal}) = ${multOuter}.`,
+      title: 'Pas 4: Multiplicar abans de restar',
+      explanation: `${PRIORITY_RULE_MSG} Multipliquem: ${formatSigned(b)} · (${bracketVal}) = ${multOuter}.`,
       expression: `${a} - (${multOuter})`,
-      ruleTag: "Multiplicació exterior"
+      ruleTag: 'Multiplicació exterior'
     },
     {
-      title: "Pas 5: Resta final",
+      title: 'Pas 5: Resta final',
       explanation: `${a} - (${multOuter}) = ${result}.`,
       expression: `= ${result}`,
-      ruleTag: "Resultat final"
+      ruleTag: 'Resultat final'
+    }
+  ];
+
+  const guidedSteps: GuidedStepNode[] = [
+    {
+      id: 'step-1',
+      promptExpression: exprDisplay,
+      stepInstruction: 'Pas 1: Quina operació s’ha de fer primer?',
+      options: [
+        {
+          id: 'wrong-outer-sub',
+          label: `${a} - ${formatSigned(b)}`,
+          isCorrect: false,
+          errorKind: 'add_sub_before_priority',
+          feedbackMessage: `Ordre incorrecte! ${PRIORITY_RULE_MSG}`
+        },
+        {
+          id: 'wrong-inner-sub',
+          label: `${c} - ${formatSigned(d)}`,
+          isCorrect: false,
+          errorKind: 'add_sub_before_priority',
+          feedbackMessage: `Ordre incorrecte! ${PRIORITY_RULE_MSG}`
+        },
+        {
+          id: 'right-paren',
+          label: `(${e} - ${f})`,
+          isCorrect: true,
+          feedbackMessage: 'Molt bé! Comencem sempre pel parèntesi més interior.',
+          subExpression: `${e} - ${f}`,
+          expectedValue: innerPar,
+          resultExpression: `${a} - ${formatSigned(b)} · [ ${c} - ${formatSigned(d)} · (${innerPar}) ]`,
+          subMistakeHint: `Calcula la resta ${e} - ${f}.`,
+          nextStepId: 'step-2'
+        }
+      ]
+    },
+    {
+      id: 'step-2',
+      promptExpression: `${a} - ${formatSigned(b)} · [ ${c} - ${formatSigned(d)} · (${innerPar}) ]`,
+      stepInstruction: 'Pas 2: Quina operació toca fer ara?',
+      options: [
+        {
+          id: 'wrong-outer-sub-2',
+          label: `${a} - ${formatSigned(b)}`,
+          isCorrect: false,
+          errorKind: 'add_sub_before_priority',
+          feedbackMessage: `Ordre incorrecte! ${PRIORITY_RULE_MSG}`
+        },
+        {
+          id: 'wrong-inner-sub-2',
+          label: `${c} - ${formatSigned(d)}`,
+          isCorrect: false,
+          errorKind: 'add_sub_before_priority',
+          feedbackMessage: `Compte dins el claudàtor! ${PRIORITY_RULE_MSG}`
+        },
+        {
+          id: 'right-inner-mult',
+          label: `${formatSigned(d)} · (${innerPar})`,
+          isCorrect: true,
+          feedbackMessage: 'Exacte! Dins del claudàtor, la multiplicació va abans que la resta.',
+          subExpression: `${formatSigned(d)} · (${innerPar})`,
+          expectedValue: multInner,
+          resultExpression: `${a} - ${formatSigned(b)} · [ ${c} - (${multInner}) ]`,
+          subMistakeHint: `Revisa la regla dels signes: ${formatSigned(d)} · (${innerPar}).`,
+          nextStepId: 'step-3'
+        }
+      ]
+    },
+    {
+      id: 'step-3',
+      promptExpression: `${a} - ${formatSigned(b)} · [ ${c} - (${multInner}) ]`,
+      stepInstruction: 'Pas 3: Quina operació s’ha de fer ara?',
+      options: [
+        {
+          id: 'wrong-outer-sub-3',
+          label: `${a} - ${formatSigned(b)}`,
+          isCorrect: false,
+          errorKind: 'add_sub_before_priority',
+          feedbackMessage: `Ordre incorrecte! ${PRIORITY_RULE_MSG}`
+        },
+        {
+          id: 'wrong-bracket-mult',
+          label: `${formatSigned(b)} · [ ... ]`,
+          isCorrect: false,
+          errorKind: 'bracket_order',
+          feedbackMessage: `Primer has d'acabar de resoldre l'operació que hi ha dins del claudàtor [ ].`
+        },
+        {
+          id: 'right-bracket-sub',
+          label: `${c} - (${multInner})`,
+          isCorrect: true,
+          feedbackMessage: 'Perfecte! Ara sí que tanquem el claudàtor.',
+          subExpression: `${c} - (${multInner})`,
+          expectedValue: bracketVal,
+          resultExpression: `${a} - ${formatSigned(b)} · (${bracketVal})`,
+          subMistakeHint:
+            multInner < 0
+              ? `Recorda: ${c} - (${multInner}) = ${c} + ${Math.abs(multInner)}.`
+              : `Calcula ${c} - ${multInner}.`,
+          nextStepId: 'step-4'
+        }
+      ]
+    },
+    {
+      id: 'step-4',
+      promptExpression: `${a} - ${formatSigned(b)} · (${bracketVal})`,
+      stepInstruction: 'Pas 4: Quina operació va abans?',
+      options: [
+        {
+          id: 'wrong-outer-sub-4',
+          label: `${a} - ${formatSigned(b)}`,
+          isCorrect: false,
+          errorKind: 'add_sub_before_priority',
+          feedbackMessage: `Ordre incorrecte! ${PRIORITY_RULE_MSG}`
+        },
+        {
+          id: 'right-outer-mult',
+          label: `${formatSigned(b)} · (${bracketVal})`,
+          isCorrect: true,
+          feedbackMessage: 'Molt bé! La multiplicació es fa abans que la resta.',
+          subExpression: `${formatSigned(b)} · (${bracketVal})`,
+          expectedValue: multOuter,
+          resultExpression: `${a} - (${multOuter})`,
+          subMistakeHint: `Multiplica ${formatSigned(b)} · (${bracketVal}) tenint en compte els signes.`,
+          nextStepId: 'step-5'
+        }
+      ]
+    },
+    {
+      id: 'step-5',
+      promptExpression: `${a} - (${multOuter})`,
+      stepInstruction: "Pas 5: Calcula l'última resta:",
+      options: [],
+      directSubExpression: `${a} - (${multOuter})`,
+      directExpectedValue: result,
+      directResultExpression: `${result}`,
+      directMistakeHint:
+        multOuter < 0
+          ? `Dos menys seguits sumen: ${a} - (${multOuter}) = ${a} + ${Math.abs(multOuter)}.`
+          : `Calcula ${a} - ${multOuter}.`
     }
   ];
 
@@ -459,26 +677,43 @@ function generateEntersLevel3(): MathExercise {
     correctAnswer: { kind: 'number', value: result },
     answerDisplay: `${result}`,
     steps,
+    guidedSteps,
     hints: [
       `Comença sempre pel parèntesi més interior: quant és (${e} - ${f})?`,
-      `El parèntesi dóna ${innerPar}. Ara multiplica per ${formatSigned(d)} abans de restar-lo a ${c}.`,
+      `${PRIORITY_RULE_MSG} Multiplica ${formatSigned(d)} per ${innerPar} abans de restar-ho a ${c}.`,
       `El claudàtor sencer té un valor de ${bracketVal}.`
     ],
     diagnoseMistake: (u) => {
       if (u.numberVal === undefined) return null;
+      if (u.numberVal === wrongInsideBracket || u.numberVal === wrongBoth) {
+        return {
+          mistakeTitle: "Error de prioritat dins del claudàtor!",
+          explanation: `Has restat (${c} - ${formatSigned(d)}) abans de fer la multiplicació ${formatSigned(d)} · (${innerPar}). ${PRIORITY_RULE_MSG}`,
+          tip: `${PRIORITY_RULE_MSG} Prova el mode "Resolució pas a pas" per practicar l'ordre!`,
+          detectedConcept: "Jerarquia d'operacions (Precedència)"
+        };
+      }
+      if (u.numberVal === wrongOuter) {
+        return {
+          mistakeTitle: "Error de prioritat d'operacions!",
+          explanation: `Has fet primer ${a} - ${formatSigned(b)} = ${a - b} abans de multiplicar pel claudàtor. ${PRIORITY_RULE_MSG}`,
+          tip: `${PRIORITY_RULE_MSG} No pots restar ${formatSigned(b)} a ${a} perquè ${formatSigned(b)} està multiplicant tot el claudàtor!`,
+          detectedConcept: "Jerarquia d'operacions (Precedència)"
+        };
+      }
       if (u.numberVal === -result) {
         return {
-          mistakeTitle: "Error de signe final!",
+          mistakeTitle: 'Error de signe final!',
           explanation: "Has fet bé gairebé tots els passos, però t'has equivocat en el signe en l'última resta o multiplicació.",
           tip: "Revisa bé la regla dels signes de l'últim pas: menys per menys = més.",
-          detectedConcept: "Signe final"
+          detectedConcept: 'Signe final'
         };
       }
       return {
-        mistakeTitle: "Revisa pas a pas els parèntesis!",
-        explanation: `En les operacions amb claudàtors [ ] i parèntesis ( ), cal anar pas a pas des del més intern cap a l'exterior.`,
-        tip: `El parèntesi interior (${e} - ${f}) val ${innerPar}, i tot el claudàtor dóna ${bracketVal}.`,
-        detectedConcept: "Jerarquia de parèntesis niats"
+        mistakeTitle: 'Revisa pas a pas els parèntesis i la prioritat!',
+        explanation: `${PRIORITY_RULE_MSG} Cal anar de dins cap a fora: (${e} - ${f}) = ${innerPar} i el claudàtor dóna ${bracketVal}.`,
+        tip: `Pots activar l'opció "Resolució pas a pas" abans de contestar per practicar l'ordre exacte.`,
+        detectedConcept: 'Jerarquia de parèntesis niats'
       };
     }
   };
@@ -489,14 +724,14 @@ function generateEntersLevel4(): MathExercise {
   const id = `ent-4-${Date.now()}-${randomInt(100, 999)}`;
   const p1 = randomNonZero(-4, 4);
   const p2_a = randomInt(-5, 5);
-  const p2_b = randomInt(-5, 5);
-  const part1 = p1 * (p2_a + p2_b);
+  const p2_b = randomNonZero(-5, 5);
+  const sum1 = p2_a + p2_b;
+  const part1 = p1 * sum1;
 
   const c_div = randomNonZero(-4, 4);
   const quotient = randomNonZero(-4, 4);
   const div_a = c_div * quotient;
   const bracketBase = randomInt(-5, 5);
-  // bracket = bracketBase - (div_a : c_div)
   const bracketVal = bracketBase - quotient;
   const extra = randomNonZero(-6, 6);
 
@@ -504,32 +739,178 @@ function generateEntersLevel4(): MathExercise {
 
   const exprDisplay = `${formatSigned(p1)} · (${p2_a} + ${formatSigned(p2_b)}) - [ ${bracketBase} - ${formatSigned(div_a)} : ${formatSigned(c_div)} ] + ${formatSigned(extra)}`;
 
+  // Priority mistake detection
+  const wrongLeftPriority = p1 * p2_a + p2_b - bracketVal + extra;
+  const wrongBracketPriority =
+    (bracketBase - div_a) % c_div === 0
+      ? part1 - (bracketBase - div_a) / c_div + extra
+      : null;
+
   const steps: ResolutionStep[] = [
     {
-      title: "Pas 1: Resoldre el primer bloc amb parèntesi",
-      explanation: `Primer calculem (${p2_a} + ${formatSigned(p2_b)}) = ${p2_a + p2_b}. Després multipliquem per ${formatSigned(p1)}: ${p1} · ${p2_a + p2_b} = ${part1}.`,
+      title: 'Pas 1: Resoldre el primer bloc amb parèntesi',
+      explanation: `Primer calculem (${p2_a} + ${formatSigned(p2_b)}) = ${sum1}. Després multipliquem per ${formatSigned(p1)}: ${p1} · ${sum1} = ${part1}.`,
       expression: `${part1} - [ ${bracketBase} - ${formatSigned(div_a)} : ${formatSigned(c_div)} ] + ${formatSigned(extra)}`,
-      ruleTag: "Bloc esquerre"
+      ruleTag: 'Bloc esquerre'
     },
     {
-      title: "Pas 2: Resoldre la divisió dins del claudàtor",
-      explanation: `Dins del claudàtor la divisió va primer: ${formatSigned(div_a)} : ${formatSigned(c_div)} = ${quotient}.`,
+      title: 'Pas 2: Resoldre la divisió dins del claudàtor',
+      explanation: `Dins del claudàtor, ${PRIORITY_RULE_MSG} Per tant la divisió va primer: ${formatSigned(div_a)} : ${formatSigned(c_div)} = ${quotient}.`,
       expression: `${part1} - [ ${bracketBase} - (${quotient}) ] + ${formatSigned(extra)}`,
-      ruleTag: "Divisió interna"
+      ruleTag: 'Divisió interna'
     },
     {
-      title: "Pas 3: Resoldre el claudàtor",
+      title: 'Pas 3: Resoldre el claudàtor',
       explanation: `${bracketBase} - (${quotient}) = ${bracketVal}.`,
       expression: `${part1} - (${bracketVal}) + ${formatSigned(extra)}`,
-      ruleTag: "Claudàtor complet"
+      ruleTag: 'Claudàtor complet'
     },
     {
       title: "Pas 4: Sumes i restes finals d'esquerra a dreta",
       explanation: `${part1} - (${bracketVal}) = ${part1 - bracketVal}; i després sumem ${formatSigned(extra)}: ${part1 - bracketVal} + (${extra}) = ${result}.`,
       expression: `= ${result}`,
-      ruleTag: "Resultat final"
+      ruleTag: 'Resultat final'
     }
   ];
+
+  // Build interactive 2-block guided state graph (lStage: 0..2, rStage: 0..2)
+  const leftExpr = (l: number) =>
+    l === 0
+      ? `${formatSigned(p1)} · (${p2_a} + ${formatSigned(p2_b)})`
+      : l === 1
+      ? `${formatSigned(p1)} · (${sum1})`
+      : `${part1}`;
+  const rightExpr = (r: number) =>
+    r === 0
+      ? `[ ${bracketBase} - ${formatSigned(div_a)} : ${formatSigned(c_div)} ]`
+      : r === 1
+      ? `[ ${bracketBase} - (${quotient}) ]`
+      : `(${bracketVal})`;
+  const fullExpr = (l: number, r: number) => `${leftExpr(l)} - ${rightExpr(r)} + ${formatSigned(extra)}`;
+
+  const guidedSteps: GuidedStepNode[] = [];
+  for (let l = 0; l <= 2; l++) {
+    for (let r = 0; r <= 2; r++) {
+      if (l === 2 && r === 2) continue;
+      const options: GuidedOperationOption[] = [];
+
+      if (l === 0) {
+        options.push({
+          id: `l0-${l}-${r}`,
+          label: `(${p2_a} + ${formatSigned(p2_b)})`,
+          isCorrect: true,
+          feedbackMessage: 'Molt bé! Comencem pel parèntesi del primer bloc.',
+          subExpression: `${p2_a} + ${formatSigned(p2_b)}`,
+          expectedValue: sum1,
+          resultExpression: fullExpr(1, r),
+          subMistakeHint: `Calcula la suma ${p2_a} + ${formatSigned(p2_b)}.`,
+          nextStepId: `L1-R${r}`
+        });
+      } else if (l === 1) {
+        options.push({
+          id: `l1-${l}-${r}`,
+          label: `${formatSigned(p1)} · (${sum1})`,
+          isCorrect: true,
+          feedbackMessage: 'Correcte! La multiplicació va abans que les sumes i restes exteriors.',
+          subExpression: `${formatSigned(p1)} · (${sum1})`,
+          expectedValue: part1,
+          resultExpression: fullExpr(2, r),
+          subMistakeHint: `Multiplica ${formatSigned(p1)} · (${sum1}).`,
+          nextStepId: `L2-R${r}`
+        });
+      }
+
+      if (r === 0) {
+        options.push({
+          id: `wrong-br-${l}-${r}`,
+          label: `${bracketBase} - ${formatSigned(div_a)}`,
+          isCorrect: false,
+          errorKind: 'add_sub_before_priority',
+          feedbackMessage: `Ordre incorrecte dins el claudàtor! ${PRIORITY_RULE_MSG}`
+        });
+        options.push({
+          id: `r0-${l}-${r}`,
+          label: `${formatSigned(div_a)} : ${formatSigned(c_div)}`,
+          isCorrect: true,
+          feedbackMessage: 'Exacte! Dins del claudàtor, la divisió es fa abans que la resta.',
+          subExpression: `${formatSigned(div_a)} : ${formatSigned(c_div)}`,
+          expectedValue: quotient,
+          resultExpression: fullExpr(l, 1),
+          subMistakeHint: `Divideix ${formatSigned(div_a)} : ${formatSigned(c_div)} tenint en compte el signe.`,
+          nextStepId: `L${l}-R1`
+        });
+      } else if (r === 1) {
+        options.push({
+          id: `r1-${l}-${r}`,
+          label: `${bracketBase} - (${quotient})`,
+          isCorrect: true,
+          feedbackMessage: 'Molt bé! Ara completem el claudàtor.',
+          subExpression: `${bracketBase} - (${quotient})`,
+          expectedValue: bracketVal,
+          resultExpression: fullExpr(l, 2),
+          subMistakeHint:
+            quotient < 0
+              ? `Dos menys seguits sumen: ${bracketBase} - (${quotient}) = ${bracketBase} + ${Math.abs(quotient)}.`
+              : `Calcula ${bracketBase} - ${quotient}.`,
+          nextStepId: `L${l}-R2`
+        });
+      }
+
+      options.push({
+        id: `wrong-end-${l}-${r}`,
+        label: `${r === 2 ? `(${bracketVal})` : '[ ... ]'} + ${formatSigned(extra)}`,
+        isCorrect: false,
+        errorKind: 'add_sub_before_priority',
+        feedbackMessage: `Ordre incorrecte! ${PRIORITY_RULE_MSG}`
+      });
+
+      guidedSteps.push({
+        id: `L${l}-R${r}`,
+        promptExpression: fullExpr(l, r),
+        stepInstruction: 'Tria quina operació s’ha de fer ara segons la jerarquia:',
+        options
+      });
+    }
+  }
+
+  // Both blocks reduced: part1 - (bracketVal) + (extra)
+  const leftTwoVal = part1 - bracketVal;
+  guidedSteps.push({
+    id: 'L2-R2',
+    promptExpression: fullExpr(2, 2),
+    stepInstruction: 'Ara només queden sumes i restes: quin ordre toca?',
+    options: [
+      {
+        id: 'right-ltr',
+        label: `${part1} - (${bracketVal})`,
+        isCorrect: true,
+        feedbackMessage: "Correcte! Quan només queden sumes i restes, operem d'esquerra a dreta.",
+        subExpression: `${part1} - (${bracketVal})`,
+        expectedValue: leftTwoVal,
+        resultExpression: `${leftTwoVal} + ${formatSigned(extra)}`,
+        subMistakeHint: `Calcula ${part1} - (${bracketVal}).`,
+        nextStepId: 'FINAL'
+      },
+      {
+        id: 'wrong-rtl',
+        label: `(${bracketVal}) + ${formatSigned(extra)}`,
+        isCorrect: false,
+        errorKind: 'add_sub_before_priority',
+        feedbackMessage: "Compte! Quan només queden sumes i restes, s'han de fer estrictament d'esquerra a dreta (a més hi ha un signe menys al davant!)."
+      }
+    ]
+  });
+
+  guidedSteps.push({
+    id: 'FINAL',
+    promptExpression: `${leftTwoVal} + ${formatSigned(extra)}`,
+    stepInstruction: 'Últim pas: calcula el resultat final:',
+    options: [],
+    directSubExpression: `${leftTwoVal} + ${formatSigned(extra)}`,
+    directExpectedValue: result,
+    directResultExpression: `${result}`,
+    directMistakeHint: `Calcula ${leftTwoVal} + (${extra}).`
+  });
 
   return {
     id,
@@ -543,26 +924,43 @@ function generateEntersLevel4(): MathExercise {
     correctAnswer: { kind: 'number', value: result },
     answerDisplay: `${result}`,
     steps,
+    guidedSteps,
     hints: [
-      `Divideix l'exercici en dos blocs: el producte de l'esquerra i el claudàtor del mig.`,
+      PRIORITY_RULE_MSG,
       `El primer bloc dóna ${part1}, i el claudàtor dóna ${bracketVal}.`,
-      `Fes l'operació final: ${part1} - (${bracketVal}) + (${extra}).`
+      `Fes l'operació final d'esquerra a dreta: ${part1} - (${bracketVal}) + (${extra}).`
     ],
     diagnoseMistake: (u) => {
       if (u.numberVal === undefined) return null;
+      if (wrongBracketPriority !== null && u.numberVal === wrongBracketPriority) {
+        return {
+          mistakeTitle: "Error de prioritat dins del claudàtor!",
+          explanation: `Has restat ${bracketBase} - ${formatSigned(div_a)} abans de dividir entre ${formatSigned(c_div)}. ${PRIORITY_RULE_MSG}`,
+          tip: `${PRIORITY_RULE_MSG} Fes primer la divisió ${formatSigned(div_a)} : ${formatSigned(c_div)} = ${quotient}.`,
+          detectedConcept: "Jerarquia d'operacions (Precedència)"
+        };
+      }
+      if (u.numberVal === wrongLeftPriority) {
+        return {
+          mistakeTitle: "Error de prioritat al parèntesi!",
+          explanation: `Cal calcular primer tot el parèntesi (${p2_a} + ${formatSigned(p2_b)}) abans de multiplicar per ${formatSigned(p1)}.`,
+          tip: PRIORITY_RULE_MSG,
+          detectedConcept: "Jerarquia d'operacions (Precedència)"
+        };
+      }
       if (u.numberVal === -result) {
         return {
-          mistakeTitle: "Compte amb el signe global!",
-          explanation: "Tens un error en el signe final en combinar els blocs.",
+          mistakeTitle: 'Compte amb el signe global!',
+          explanation: 'Tens un error en el signe final en combinar els blocs.',
           tip: "Fes les sumes i restes finals estrictament d'esquerra a dreta.",
-          detectedConcept: "Signe acumulatiu"
+          detectedConcept: 'Signe acumulatiu'
         };
       }
       return {
-        mistakeTitle: "Algun bloc s'ha desquadrat",
-        explanation: `En aquests reptes llargs, separa cada part: primer terme = ${part1}, claudàtor = ${bracketVal}.`,
-        tip: "Utilitza la pissarra d'esborrany per escriure cada bloc pas a pas!",
-        detectedConcept: "Estratègia per blocs"
+        mistakeTitle: "Algun bloc o ordre s'ha desquadrat",
+        explanation: `${PRIORITY_RULE_MSG} Separa cada bloc: primer terme = ${part1}, claudàtor = ${bracketVal}.`,
+        tip: 'Utilitza l’opció "Resolució pas a pas" o la pissarra d’esborrany per comprovar l’ordre!',
+        detectedConcept: 'Estratègia per blocs i jerarquia'
       };
     }
   };
@@ -1733,6 +2131,16 @@ function generateFraccionsLevel3(): MathExercise {
     ],
     diagnoseMistake: (u) => {
       if (u.numVal !== undefined && u.denVal !== undefined) {
+        const wrongDiff = simplifyFraction(a * d - c * b, b * d);
+        const wrongPrio = simplifyFraction(wrongDiff.num * parSimp.num, wrongDiff.den * parSimp.den);
+        if (u.numVal === wrongPrio.num && u.denVal === wrongPrio.den) {
+          return {
+            mistakeTitle: "Error de prioritat d'operacions!",
+            explanation: `Has restat ${a}/${b} - ${c}/${d} abans de multiplicar pel parèntesi. ${PRIORITY_RULE_MSG}`,
+            tip: `${PRIORITY_RULE_MSG} Primer has de multiplicar ${c}/${d} per (${parSimp.num}/${parSimp.den}).`,
+            detectedConcept: "Jerarquia d'operacions en fraccions"
+          };
+        }
         if (u.numVal === -finalSimp.num && u.denVal === finalSimp.den) {
           return {
             mistakeTitle: "Signe invertit!",
@@ -1743,7 +2151,7 @@ function generateFraccionsLevel3(): MathExercise {
         }
         return {
           mistakeTitle: "Error en la jerarquia de fraccions!",
-          explanation: "Recorda l'ordre sagrat de les operacions: 1r parèntesi -> 2n multiplicacions/divisions -> 3r sumes/restes.",
+          explanation: `${PRIORITY_RULE_MSG} L'ordre és: 1r parèntesi -> 2n multiplicacions/divisions -> 3r sumes/restes.`,
           tip: `El parèntesi donava ${parSimp.num}/${parSimp.den}, i la multiplicació ${multSimp.num}/${multSimp.den}.`,
           detectedConcept: "Jerarquia en càlcul amb fraccions"
         };
@@ -1824,6 +2232,14 @@ function generateFraccionsLevel4(): MathExercise {
     ],
     diagnoseMistake: (u) => {
       if (u.numVal !== undefined && u.denVal !== undefined) {
+        if (u.numVal === 1 && u.denVal === 12) {
+          return {
+            mistakeTitle: "Error de prioritat d'operacions!",
+            explanation: `Has restat 4/9 - 1/3 abans de multiplicar per (1 - 1/4). ${PRIORITY_RULE_MSG}`,
+            tip: `${PRIORITY_RULE_MSG} Primer multiplica 1/3 · 3/4 = 1/4 i al final resta.`,
+            detectedConcept: "Jerarquia d'operacions en fraccions"
+          };
+        }
         if (u.numVal === -finalNum && u.denVal === finalDen) {
           return {
             mistakeTitle: "Error de signe en la resta!",
@@ -1834,7 +2250,7 @@ function generateFraccionsLevel4(): MathExercise {
         }
         return {
           mistakeTitle: "Revisa pas a pas amb la pissarra!",
-          explanation: `Aquest és un exercici típic de màxima puntuació d'examen. Separa la potència (4/9), el parèntesi (3/4) i el producte (1/4).`,
+          explanation: `${PRIORITY_RULE_MSG} Separa la potència (4/9), el parèntesi (3/4) i el producte (1/4).`,
           tip: "16/36 - 9/36 dóna exactament 7/36.",
           detectedConcept: "Combinada avançada de fraccions"
         };
